@@ -16,17 +16,18 @@ class LLMModule:
         Initialize LLM module
         
         Args:
-            api_key: OpenAI API key (optional, will use mock mode if not provided)
+            api_key: Google Gemini API key (optional, will use mock mode if not provided)
         """
         self.api_key = api_key
         self.use_mock = api_key is None
         
         if not self.use_mock:
             try:
-                import openai
-                self.client = openai.OpenAI(api_key=api_key)
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel('gemini-2.0-flash-exp')
             except Exception as e:
-                print(f"Warning: Could not initialize OpenAI client: {e}")
+                print(f"Warning: Could not initialize Gemini client: {e}")
                 self.use_mock = True
     
     def generate_questions(self, event: Dict) -> Dict[str, str]:
@@ -96,7 +97,7 @@ class LLMModule:
         if self.use_mock:
             return self._get_mock_prompt(event, missing_info)
         
-        # Generate AI-powered prompt
+        # Generate AI-powered prompt using Gemini
         try:
             event_details = f"""
 Event: {event['name']}
@@ -104,17 +105,11 @@ Date: {event['start'].strftime('%Y-%m-%d %H:%M')}
 Description: {event.get('description', 'N/A')}
 """
             
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that asks clear, concise questions to gather event details."},
-                    {"role": "user", "content": f"Generate a friendly question to ask the user about their {missing_info[0]} for this event:\n{event_details}"}
-                ],
-                max_tokens=100,
-                temperature=0.7
-            )
+            prompt = f"You are a helpful assistant that asks clear, concise questions to gather event details. Generate a friendly question to ask the user about their {missing_info[0]} for this event:\n{event_details}"
             
-            return response.choices[0].message.content.strip()
+            response = self.client.generate_content(prompt)
+            
+            return response.text.strip()
         except Exception as e:
             print(f"Error generating AI prompt: {e}")
             return self._get_mock_prompt(event, missing_info)

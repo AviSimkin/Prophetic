@@ -4,7 +4,7 @@ Prophetic - Calendar Event Management with Predictive Alerts
 import streamlit as st
 from datetime import datetime, timedelta
 import pandas as pd
-from calendar_parser import parse_calendar_file, create_sample_calendar
+from calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
 from llm_module import LLMModule
 from web_scraper import WebScraper
 from timeline_simulator import TimelineSimulator
@@ -37,43 +37,61 @@ if 'llm_module' not in st.session_state:
 if 'scraper' not in st.session_state:
     st.session_state.scraper = WebScraper()
 
+if 'demo_mode' not in st.session_state:
+    st.session_state.demo_mode = True
+
 
 def main():
     """Main application"""
     st.title("🔮 Prophetic Calendar")
     st.markdown("*Predictive event management with proactive alerts*")
     
-    # Sidebar for timeline control
+    # Sidebar for configuration
     with st.sidebar:
-        st.header("⏰ Timeline Control")
-        st.markdown("*Simulate time for demo purposes*")
-        
-        current_sim_date = st.session_state.timeline.get_current_date()
-        st.metric("Current Simulated Date", current_sim_date.strftime("%Y-%m-%d"))
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("⏩ +1 Day"):
-                st.session_state.timeline.advance_days(1)
-                st.rerun()
-        
-        with col2:
-            if st.button("⏩ +7 Days"):
-                st.session_state.timeline.advance_days(7)
-                st.rerun()
-        
-        if st.button("🔄 Reset to Today"):
-            st.session_state.timeline.reset()
-            st.session_state.alerts_checked = set()
-            st.rerun()
+        # Demo mode toggle
+        st.header("🎮 Mode")
+        demo_mode = st.toggle("Demo Mode", value=st.session_state.demo_mode, help="Enable timeline controls for demonstrations")
+        if demo_mode != st.session_state.demo_mode:
+            st.session_state.demo_mode = demo_mode
+            st.session_state.timeline.set_demo_mode(demo_mode)
         
         st.divider()
         
-        # API Key configuration (optional)
-        st.header("🔑 OpenAI API Key (Optional)")
-        api_key = st.text_input("API Key", type="password", help="Leave empty to use mock mode")
+        # Timeline control (only in demo mode)
+        if st.session_state.demo_mode:
+            st.header("⏰ Timeline Control")
+            st.markdown("*Simulate time for demo purposes*")
+            
+            current_sim_date = st.session_state.timeline.get_current_date()
+            st.metric("Current Simulated Date", current_sim_date.strftime("%Y-%m-%d"))
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("⏩ +1 Day"):
+                    st.session_state.timeline.advance_days(1)
+                    st.rerun()
+            
+            with col2:
+                if st.button("⏩ +7 Days"):
+                    st.session_state.timeline.advance_days(7)
+                    st.rerun()
+            
+            if st.button("🔄 Reset to Today"):
+                st.session_state.timeline.reset()
+                st.session_state.alerts_checked = set()
+                st.rerun()
+            
+            st.divider()
+        else:
+            st.info("💡 Timeline is set to real current date in production mode")
+            st.divider()
+        
+        # API Key configuration
+        st.header("🔑 Gemini API Key (Optional)")
+        api_key = st.text_input("API Key", type="password", help="Enter Google Gemini API key for LLM features and browseruse. Leave empty to use mock mode")
         if api_key:
             st.session_state.llm_module = LLMModule(api_key=api_key)
+            st.session_state.scraper = WebScraper(api_key=api_key)
         
     # Main content
     tab1, tab2, tab3 = st.tabs(["📅 Calendar Upload", "📋 Event Details", "🚨 Alerts"])
@@ -106,6 +124,13 @@ def main():
                 events = parse_calendar_file(sample_calendar)
                 st.session_state.events = events
                 st.success(f"✅ Loaded {len(events)} sample events!")
+                st.rerun()
+            
+            if st.button("🇮🇱 Load Israeli Calendar"):
+                israeli_calendar = create_israeli_calendar()
+                events = parse_calendar_file(israeli_calendar)
+                st.session_state.events = events
+                st.success(f"✅ Loaded {len(events)} Israeli events!")
                 st.rerun()
         
         # Display loaded events

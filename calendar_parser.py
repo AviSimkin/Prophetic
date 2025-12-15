@@ -105,3 +105,56 @@ def create_sample_calendar() -> bytes:
         cal.add_component(event)
     
     return cal.to_ical()
+
+
+def create_israeli_calendar() -> bytes:
+    """
+    Create a sample Israeli calendar with typical events for demo mode
+    
+    Returns:
+        Bytes of Israeli calendar file with 3 typical events
+    """
+    from datetime import timedelta
+    
+    cal = Calendar()
+    cal.add('prodid', '-//Prophetic Israeli Calendar//EN')
+    cal.add('version', '2.0')
+    
+    # Create sample events typical for Israeli calendar
+    base_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    events_data = [
+        {
+            'name': 'פגישה עם לקוח - Tel Aviv',
+            'days_offset': 7,
+            'duration': 2,
+            'description': 'Client meeting in Tel Aviv office',
+            'location': 'Rothschild Blvd, Tel Aviv'
+        },
+        {
+            'name': 'השתלמות מקצועית - Jerusalem',
+            'days_offset': 14,
+            'duration': 4,
+            'description': 'Professional development workshop',
+            'location': 'Jerusalem International Convention Center'
+        },
+        {
+            'name': 'כנס טכנולוגיה - Herzliya',
+            'days_offset': 21,
+            'duration': 8,
+            'description': 'Annual technology conference',
+            'location': 'Herzliya Pituach'
+        }
+    ]
+    
+    for event_data in events_data:
+        event = Event()
+        event.add('summary', event_data['name'])
+        event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))
+        event.add('dtend', base_date + timedelta(days=event_data['days_offset'], hours=event_data['duration']))
+        event.add('description', event_data['description'])
+        if 'location' in event_data:
+            event.add('location', event_data['location'])
+        cal.add_component(event)
+    
+    return cal.to_ical()

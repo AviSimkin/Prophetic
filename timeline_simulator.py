@@ -10,30 +10,43 @@ class TimelineSimulator:
     Simulates the passage of time for demo purposes
     """
     
-    def __init__(self):
+    def __init__(self, demo_mode: bool = True):
+        self.demo_mode = demo_mode
         self.simulated_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
+    def set_demo_mode(self, demo_mode: bool):
+        """Enable or disable demo mode"""
+        self.demo_mode = demo_mode
+        if not demo_mode:
+            # Reset to current date when exiting demo mode
+            self.simulated_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
     def get_current_date(self) -> datetime:
-        """Get the current simulated date"""
-        return self.simulated_date
+        """Get the current date (simulated in demo mode, real otherwise)"""
+        if self.demo_mode:
+            return self.simulated_date
+        else:
+            return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
     def advance_days(self, days: int):
         """
-        Advance the simulated timeline by specified days
+        Advance the simulated timeline by specified days (only works in demo mode)
         
         Args:
             days: Number of days to advance
         """
-        self.simulated_date += timedelta(days=days)
+        if self.demo_mode:
+            self.simulated_date += timedelta(days=days)
     
     def set_date(self, date: datetime):
         """
-        Set the simulated date to a specific datetime
+        Set the simulated date to a specific datetime (only works in demo mode)
         
         Args:
             date: Target datetime
         """
-        self.simulated_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        if self.demo_mode:
+            self.simulated_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
     
     def reset(self):
         """Reset simulator to current real date"""
@@ -41,7 +54,7 @@ class TimelineSimulator:
     
     def get_upcoming_events(self, events: List[Dict], days_ahead: int = 30) -> List[Dict]:
         """
-        Get events that are upcoming from the simulated current date
+        Get events that are upcoming from the current date
         
         Args:
             events: List of event dictionaries
@@ -50,11 +63,12 @@ class TimelineSimulator:
         Returns:
             List of upcoming events
         """
-        end_date = self.simulated_date + timedelta(days=days_ahead)
+        current_date = self.get_current_date()
+        end_date = current_date + timedelta(days=days_ahead)
         
         upcoming = [
             event for event in events
-            if event['start'] >= self.simulated_date and event['start'] <= end_date
+            if event['start'] >= current_date and event['start'] <= end_date
         ]
         
         return sorted(upcoming, key=lambda x: x['start'])
@@ -70,7 +84,8 @@ class TimelineSimulator:
         Returns:
             List of events that need alerts
         """
-        target_date = self.simulated_date + timedelta(days=days_before)
+        current_date = self.get_current_date()
+        target_date = current_date + timedelta(days=days_before)
         
         # Find events that occur on the target date
         events_needing_alert = []
@@ -83,7 +98,7 @@ class TimelineSimulator:
     
     def days_until_event(self, event: Dict) -> int:
         """
-        Calculate days until an event from simulated current date
+        Calculate days until an event from current date
         
         Args:
             event: Event dictionary
@@ -91,6 +106,7 @@ class TimelineSimulator:
         Returns:
             Number of days until event (negative if past)
         """
+        current_date = self.get_current_date()
         event_date = event['start'].replace(hour=0, minute=0, second=0, microsecond=0)
-        delta = event_date - self.simulated_date
+        delta = event_date - current_date
         return delta.days

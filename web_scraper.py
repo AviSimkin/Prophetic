@@ -1,22 +1,40 @@
 """
 Web scraper module for checking potential issues/hiccups for events
 """
-import requests
-import random
-from bs4 import BeautifulSoup
-from typing import Dict, List
+import asyncio
+from typing import Dict, List, Optional
 from datetime import datetime
 
 
 class WebScraper:
     """
-    Module for scraping the web to identify potential issues for events
+    Module for scraping the web to identify potential issues for events using browseruse
     """
     
-    def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize WebScraper with optional Gemini API key
+        
+        Args:
+            api_key: Google Gemini API key (optional, will use mock mode if not provided)
+        """
+        self.api_key = api_key
+        self.use_mock = api_key is None
+        
+        if not self.use_mock:
+            try:
+                import google.generativeai as genai
+                from browseruse import Agent
+                
+                genai.configure(api_key=api_key)
+                self.llm = genai.GenerativeModel('gemini-2.0-flash-exp')
+                self.agent = Agent(
+                    task="Search for potential issues related to events",
+                    llm=self.llm
+                )
+            except Exception as e:
+                print(f"Warning: Could not initialize browseruse agent: {e}")
+                self.use_mock = True
     
     def check_for_issues(self, event: Dict) -> List[Dict[str, str]]:
         """
@@ -28,34 +46,84 @@ class WebScraper:
         Returns:
             List of potential issues/alerts
         """
+        if self.use_mock:
+            return self._check_for_issues_mock(event)
+        
+        # Use browseruse to search for real issues
+        try:
+            return asyncio.run(self._check_for_issues_browseruse(event))
+        except Exception as e:
+            print(f"Error using browseruse: {e}")
+            return self._check_for_issues_mock(event)
+    
+    async def _check_for_issues_browseruse(self, event: Dict) -> List[Dict[str, str]]:
+        """
+        Use browseruse with Gemini to search for real issues
+        """
+        issues = []
+        location = event.get('location', '')
+        event_date = event['start']
+        
+        if not location:
+            return issues
+        
+        try:
+            # Create search tasks for the agent
+            search_query = f"""
+            Search for potential issues for an event at {location} on {event_date.strftime('%Y-%m-%d')}:
+            1. Check weather forecast
+            2. Check traffic conditions and road closures
+            3. Check for major events or construction in the area
+            
+            Summarize any potential issues found.
+            """
+            
+            result = await self.agent.run(search_query)
+            
+            # Parse the result and extract issues
+            if result and len(result) > 0:
+                issues.append({
+                    'type': 'browseruse_search',
+                    'severity': 'info',
+                    'message': result
+                })
+        except Exception as e:
+            print(f"Error in browseruse search: {e}")
+        
+        return issues
+    
+    def _check_for_issues_mock(self, event: Dict) -> List[Dict[str, str]]:
+        """
+        Mock implementation for checking issues (used when no API key provided)
+        """
+        import random
+        
         issues = []
         
         # Check weather-related issues
-        weather_issues = self._check_weather(event)
+        weather_issues = self._check_weather_mock(event)
         issues.extend(weather_issues)
         
         # Check traffic/transit issues
         if event.get('location'):
-            traffic_issues = self._check_traffic(event)
+            traffic_issues = self._check_traffic_mock(event)
             issues.extend(traffic_issues)
         
         # Check location-specific issues
         if event.get('location'):
-            location_issues = self._check_location_issues(event)
+            location_issues = self._check_location_issues_mock(event)
             issues.extend(location_issues)
         
         return issues
     
-    def _check_weather(self, event: Dict) -> List[Dict[str, str]]:
+    def _check_weather_mock(self, event: Dict) -> List[Dict[str, str]]:
         """
         Check for weather-related issues (mock implementation)
         
         In a production system, this would call a weather API
         """
+        import random
         issues = []
-        
-        # Mock weather check - simulate checking weather conditions
-        # In production, you would use APIs like OpenWeatherMap, Weather.gov, etc.
         
         event_date = event['start']
         days_until = (event_date - datetime.now()).days
@@ -71,12 +139,13 @@ class WebScraper:
         
         return issues
     
-    def _check_traffic(self, event: Dict) -> List[Dict[str, str]]:
+    def _check_traffic_mock(self, event: Dict) -> List[Dict[str, str]]:
         """
         Check for traffic or transit issues (mock implementation)
         
         In production, would use Google Maps API, Waze API, or transit APIs
         """
+        import random
         issues = []
         
         location = event.get('location', '').lower()
@@ -101,7 +170,7 @@ class WebScraper:
         
         return issues
     
-    def _check_location_issues(self, event: Dict) -> List[Dict[str, str]]:
+    def _check_location_issues_mock(self, event: Dict) -> List[Dict[str, str]]:
         """
         Check for location-specific issues (mock implementation)
         
@@ -110,6 +179,7 @@ class WebScraper:
         - Local events that might cause congestion
         - Venue-specific alerts
         """
+        import random
         issues = []
         
         location = event.get('location', '').lower()
@@ -146,6 +216,7 @@ class WebScraper:
         Returns:
             Dictionary with travel estimates
         """
+        import random
         # Mock travel time estimation
         # In production, would use Google Maps Distance Matrix API or similar
         

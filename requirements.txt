@@ -3,5 +3,6 @@ icalendar==5.0.11
 python-dateutil==2.8.2
 requests==2.31.0
 beautifulsoup4==4.12.3
-openai==1.12.0
+google-generativeai==0.3.2
+browseruse==0.1.8
 pandas==2.2.0
