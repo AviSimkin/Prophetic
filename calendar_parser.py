@@ -99,7 +99,8 @@ def create_sample_calendar() -> bytes:
     ]
     
     for event_data in events_data:
-        event = Calendar()
+        from icalendar import Event
+        event = Event()
         event.add('summary', event_data['name'])
         event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))
         event.add('dtend', base_date + timedelta(days=event_data['days_offset'], hours=event_data['duration']))
