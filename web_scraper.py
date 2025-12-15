@@ -2,6 +2,7 @@
 Web scraper module for checking potential issues/hiccups for events
 """
 import asyncio
+import random
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -81,12 +82,15 @@ class WebScraper:
             result = await self.agent.run(search_query)
             
             # Parse the result and extract issues
-            if result and len(result) > 0:
-                issues.append({
-                    'type': 'browseruse_search',
-                    'severity': 'info',
-                    'message': result
-                })
+            if result:
+                # Convert result to string if needed
+                result_str = str(result) if result else ""
+                if result_str.strip():
+                    issues.append({
+                        'type': 'browseruse_search',
+                        'severity': 'info',
+                        'message': result_str
+                    })
         except Exception as e:
             print(f"Error in browseruse search: {e}")
         
@@ -96,8 +100,6 @@ class WebScraper:
         """
         Mock implementation for checking issues (used when no API key provided)
         """
-        import random
-        
         issues = []
         
         # Check weather-related issues
@@ -122,7 +124,6 @@ class WebScraper:
         
         In a production system, this would call a weather API
         """
-        import random
         issues = []
         
         event_date = event['start']
@@ -145,7 +146,6 @@ class WebScraper:
         
         In production, would use Google Maps API, Waze API, or transit APIs
         """
-        import random
         issues = []
         
         location = event.get('location', '').lower()
@@ -179,7 +179,6 @@ class WebScraper:
         - Local events that might cause congestion
         - Venue-specific alerts
         """
-        import random
         issues = []
         
         location = event.get('location', '').lower()
@@ -216,7 +215,6 @@ class WebScraper:
         Returns:
             Dictionary with travel estimates
         """
-        import random
         # Mock travel time estimation
         # In production, would use Google Maps Distance Matrix API or similar
         
