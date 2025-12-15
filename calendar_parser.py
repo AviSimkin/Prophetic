@@ -1,8 +1,8 @@
 """
 Calendar parser module for handling .ics files
 """
-from icalendar import Calendar
-from datetime import datetime
+from icalendar import Calendar, Event
+from datetime import datetime, time
 from typing import List, Dict
 import io
 
@@ -37,11 +37,9 @@ def parse_calendar_file(file_content: bytes) -> List[Dict]:
                     event['start'] = event['start']
                 else:
                     # If it's a date object, convert to datetime at midnight
-                    from datetime import time
                     event['start'] = datetime.combine(event['start'], time())
                     
                 if event['end'] and not isinstance(event['end'], datetime):
-                    from datetime import time
                     event['end'] = datetime.combine(event['end'], time())
                 
                 events.append(event)
@@ -99,7 +97,6 @@ def create_sample_calendar() -> bytes:
     ]
     
     for event_data in events_data:
-        from icalendar import Event
         event = Event()
         event.add('summary', event_data['name'])
         event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))

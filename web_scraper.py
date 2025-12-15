@@ -2,6 +2,7 @@
 Web scraper module for checking potential issues/hiccups for events
 """
 import requests
+import random
 from bs4 import BeautifulSoup
 from typing import Dict, List
 from datetime import datetime
@@ -61,7 +62,6 @@ class WebScraper:
         
         if days_until <= 7:
             # Simulate finding weather issues occasionally
-            import random
             if random.random() > 0.7:
                 issues.append({
                     'type': 'weather',
@@ -83,7 +83,6 @@ class WebScraper:
         event_date = event['start']
         
         # Mock traffic check
-        import random
         if random.random() > 0.6:
             issues.append({
                 'type': 'traffic',
@@ -116,7 +115,6 @@ class WebScraper:
         location = event.get('location', '').lower()
         
         # Mock location checks
-        import random
         
         # Simulate finding construction/closure info
         if random.random() > 0.75:
@@ -151,7 +149,6 @@ class WebScraper:
         # Mock travel time estimation
         # In production, would use Google Maps Distance Matrix API or similar
         
-        import random
         base_time = random.randint(15, 60)
         
         return {

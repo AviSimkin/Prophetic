@@ -3,6 +3,7 @@ LLM module for collecting event details from users
 """
 from typing import Dict, Optional
 import json
+import re
 
 
 class LLMModule:
@@ -67,7 +68,6 @@ class LLMModule:
         
         if question_type in ['arrival_time', 'departure_time']:
             # Basic time validation
-            import re
             time_pattern = r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$'
             if not re.match(time_pattern, response):
                 # Try to fix common formats
