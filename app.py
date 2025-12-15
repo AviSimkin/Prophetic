@@ -1,14 +1,19 @@
 """
 Prophetic - Calendar Event Management with Predictive Alerts
 """
-import streamlit as st
+import os
+import json
 from datetime import datetime, timedelta
+
 import pandas as pd
+import streamlit as st
+from dotenv import load_dotenv
+
 from calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
 from llm_module import LLMModule
 from web_scraper import WebScraper
 from timeline_simulator import TimelineSimulator
-import json
+from prophetic_logger import get_logger, log_event, log_info
 
 
 # Page configuration
@@ -18,7 +23,17 @@ st.set_page_config(
     layout="wide"
 )
 
+# Load environment variables once
+load_dotenv()
+ENV_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 # Initialize session state
+if 'logger' not in st.session_state:
+    # Create a richer session name for UI runs
+    session_name = f"ui-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    st.session_state.logger = get_logger(session_name=session_name)
+    log_info("Application started")
+
 if 'timeline' not in st.session_state:
     st.session_state.timeline = TimelineSimulator()
 
@@ -31,11 +46,14 @@ if 'event_details' not in st.session_state:
 if 'alerts_checked' not in st.session_state:
     st.session_state.alerts_checked = set()
 
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = ENV_API_KEY
+
 if 'llm_module' not in st.session_state:
-    st.session_state.llm_module = LLMModule()
+    st.session_state.llm_module = LLMModule(api_key=st.session_state.api_key)
 
 if 'scraper' not in st.session_state:
-    st.session_state.scraper = WebScraper()
+    st.session_state.scraper = WebScraper(api_key=st.session_state.api_key)
 
 if 'demo_mode' not in st.session_state:
     st.session_state.demo_mode = True
@@ -88,10 +106,28 @@ def main():
         
         # API Key configuration
         st.header("🔑 Gemini API Key (Optional)")
-        api_key = st.text_input("API Key", type="password", help="Enter Google Gemini API key for LLM features and browseruse. Leave empty to use mock mode")
+
+        env_key_present = bool(ENV_API_KEY)
+        if env_key_present:
+            st.caption("Using key from .env unless you override below.")
+
+        api_key = st.text_input(
+            "API Key",
+            type="password",
+            placeholder="Using .env value" if env_key_present else "Enter Google Gemini API key",
+            help="Provide a Gemini API key for LLM features. Leave empty to use mock mode."
+        )
+
+        # Apply overrides only when user provides a non-empty input
         if api_key:
+            st.session_state.api_key = api_key
             st.session_state.llm_module = LLMModule(api_key=api_key)
             st.session_state.scraper = WebScraper(api_key=api_key)
+        elif st.session_state.api_key != ENV_API_KEY:
+            # Reset to env key if user cleared the field
+            st.session_state.api_key = ENV_API_KEY
+            st.session_state.llm_module = LLMModule(api_key=ENV_API_KEY)
+            st.session_state.scraper = WebScraper(api_key=ENV_API_KEY)
         
     # Main content
     tab1, tab2, tab3 = st.tabs(["📅 Calendar Upload", "📋 Event Details", "🚨 Alerts"])
@@ -113,8 +149,10 @@ def main():
                     file_content = uploaded_file.read()
                     events = parse_calendar_file(file_content)
                     st.session_state.events = events
+                    log_event('calendar_upload', uploaded_file.name, {'event_count': len(events)})
                     st.success(f"✅ Successfully loaded {len(events)} events!")
                 except Exception as e:
+                    log_error(f"Error parsing calendar file: {uploaded_file.name}", e)
                     st.error(f"Error parsing calendar file: {str(e)}")
         
         with col2:
@@ -123,6 +161,7 @@ def main():
                 sample_calendar = create_sample_calendar()
                 events = parse_calendar_file(sample_calendar)
                 st.session_state.events = events
+                log_event('calendar_load', 'Sample Calendar', {'event_count': len(events)})
                 st.success(f"✅ Loaded {len(events)} sample events!")
                 st.rerun()
             
@@ -130,6 +169,7 @@ def main():
                 israeli_calendar = create_israeli_calendar()
                 events = parse_calendar_file(israeli_calendar)
                 st.session_state.events = events
+                log_event('calendar_load', 'Israeli Calendar', {'event_count': len(events)})
                 st.success(f"✅ Loaded {len(events)} Israeli events!")
                 st.rerun()
         

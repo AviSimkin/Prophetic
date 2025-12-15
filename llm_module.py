@@ -1,9 +1,13 @@
 """
 LLM module for collecting event details from users
 """
-from typing import Dict, Optional
-import json
+import os
 import re
+import json
+from typing import Dict, Optional
+
+from dotenv import load_dotenv
+from prophetic_logger import log_llm_call, log_info, log_error
 
 
 class LLMModule:
@@ -18,17 +22,22 @@ class LLMModule:
         Args:
             api_key: Google Gemini API key (optional, will use mock mode if not provided)
         """
-        self.api_key = api_key
-        self.use_mock = api_key is None
+        load_dotenv()
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.use_mock = self.api_key is None
         
         if not self.use_mock:
             try:
                 import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                self.client = genai.GenerativeModel('gemini-2.0-flash-exp')
+                genai.configure(api_key=self.api_key)
+                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+                self.client = genai.GenerativeModel(self.model_name)
+                log_info(f"LLM Module initialized with Gemini API (model: {self.model_name})")
             except Exception as e:
-                print(f"Warning: Could not initialize Gemini client: {e}")
+                log_error("Could not initialize Gemini client, using mock mode", e)
                 self.use_mock = True
+        else:
+            log_info("LLM Module initialized in mock mode (no API key)")
     
     def generate_questions(self, event: Dict) -> Dict[str, str]:
         """
@@ -108,10 +117,28 @@ Description: {event.get('description', 'N/A')}
             prompt = f"You are a helpful assistant that asks clear, concise questions to gather event details. Generate a friendly question to ask the user about their {missing_info[0]} for this event:\n{event_details}"
             
             response = self.client.generate_content(prompt)
+            response_text = response.text.strip()
             
-            return response.text.strip()
+            # Log the LLM call with token usage if available
+            input_tokens = getattr(response, 'usage_metadata', {}).get('prompt_token_count', None) if hasattr(response, 'usage_metadata') else None
+            output_tokens = getattr(response, 'usage_metadata', {}).get('candidates_token_count', None) if hasattr(response, 'usage_metadata') else None
+            
+            log_llm_call(
+                model=self.model_name,
+                prompt=prompt,
+                response=response_text,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata={
+                    'purpose': 'contextual_prompt',
+                    'event': event.get('name'),
+                    'field': missing_info[0] if missing_info else 'unknown'
+                }
+            )
+            
+            return response_text
         except Exception as e:
-            print(f"Error generating AI prompt: {e}")
+            log_error("Error generating AI prompt", e)
             return self._get_mock_prompt(event, missing_info)
     
     def _get_mock_prompt(self, event: Dict, missing_info: list) -> str:

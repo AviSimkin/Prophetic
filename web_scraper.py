@@ -1,10 +1,14 @@
 """
 Web scraper module for checking potential issues/hiccups for events
 """
+import os
 import asyncio
 import random
 from typing import Dict, List, Optional
 from datetime import datetime
+
+from dotenv import load_dotenv
+from prophetic_logger import log_info, log_error, log_event, log_llm_call
 
 
 class WebScraper:
@@ -19,23 +23,26 @@ class WebScraper:
         Args:
             api_key: Google Gemini API key (optional, will use mock mode if not provided)
         """
-        self.api_key = api_key
-        self.use_mock = api_key is None
+        load_dotenv()
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.use_mock = self.api_key is None
         
         if not self.use_mock:
             try:
                 import google.generativeai as genai
-                from browseruse import Agent
                 
-                genai.configure(api_key=api_key)
-                self.llm = genai.GenerativeModel('gemini-2.0-flash-exp')
-                self.agent = Agent(
-                    task="Search for potential issues related to events",
-                    llm=self.llm
-                )
+                genai.configure(api_key=self.api_key)
+                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+                self.llm = genai.GenerativeModel(self.model_name)
+                # browseruse is optional and not currently used
+                # self.agent = Agent(task="...", llm=self.llm)
+                log_info(f"WebScraper initialized with Gemini API (model: {self.model_name})")
             except Exception as e:
-                print(f"Warning: Could not initialize browseruse agent: {e}")
+                # Fall back to mock mode if Gemini is unavailable
+                log_info(f"WebScraper using mock mode. {e}")
                 self.use_mock = True
+        else:
+            log_info("WebScraper initialized in mock mode (no API key)")
     
     def check_for_issues(self, event: Dict) -> List[Dict[str, str]]:
         """
@@ -47,21 +54,27 @@ class WebScraper:
         Returns:
             List of potential issues/alerts
         """
+        log_event('issue_check', event.get('name', 'Unknown Event'), {
+            'location': event.get('location', 'N/A'),
+            'date': event.get('start').isoformat() if event.get('start') else 'N/A',
+            'mode': 'mock' if self.use_mock else 'api'
+        })
+        
         if self.use_mock:
             return self._check_for_issues_mock(event)
         
-        # Use browseruse to search for real issues
+        # Use Gemini directly to search for issues (no browseruse)
         try:
-            return asyncio.run(self._check_for_issues_browseruse(event))
+            return asyncio.run(self._check_for_issues_api(event))
         except Exception as e:
-            print(f"Error using browseruse: {e}")
+            log_error(f"Error using API for issue check", e)
             return self._check_for_issues_mock(event)
     
-    async def _check_for_issues_browseruse(self, event: Dict) -> List[Dict[str, str]]:
+    async def _check_for_issues_api(self, event: Dict) -> List[Dict[str, str]]:
         """
-        Use browseruse with Gemini to search for real issues
+        Use Gemini API to search for real issues (no browser automation)
         """
-        issues = []
+        issues: List[Dict[str, str]] = []
         location = event.get('location', '')
         event_date = event['start']
         
@@ -69,30 +82,44 @@ class WebScraper:
             return issues
         
         try:
-            # Create search tasks for the agent
-            search_query = f"""
-            Search for potential issues for an event at {location} on {event_date.strftime('%Y-%m-%d')}:
-            1. Check weather forecast
-            2. Check traffic conditions and road closures
-            3. Check for major events or construction in the area
+            search_query = (
+                f"Search for potential issues for an event at {location} on {event_date.strftime('%Y-%m-%d')}:\n"
+                "1. Weather forecast (rain, heat, storms)\n"
+                "2. Traffic conditions and road closures\n"
+                "3. Nearby major events or construction\n\n"
+                "Summarize any potential issues in 2-3 bullet points."
+            )
             
-            Summarize any potential issues found.
-            """
+            # Call Gemini
+            response = await asyncio.to_thread(self.llm.generate_content, search_query)
+            result_text = getattr(response, 'text', '') or str(response)
             
-            result = await self.agent.run(search_query)
+            # Token usage (if available)
+            usage = getattr(response, 'usage_metadata', None)
+            input_tokens = getattr(usage, 'prompt_token_count', None) if usage else None
+            output_tokens = getattr(usage, 'candidates_token_count', None) if usage else None
             
-            # Parse the result and extract issues
-            if result:
-                # Convert result to string if needed
-                result_str = str(result) if result else ""
-                if result_str.strip():
-                    issues.append({
-                        'type': 'browseruse_search',
-                        'severity': 'info',
-                        'message': result_str
-                    })
+            log_llm_call(
+                model=self.model_name,
+                prompt=search_query,
+                response=result_text,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata={
+                    'purpose': 'issue_search',
+                    'location': location,
+                    'date': event_date.isoformat(),
+                }
+            )
+            
+            if result_text.strip():
+                issues.append({
+                    'type': 'gemini_search',
+                    'severity': 'info',
+                    'message': result_text.strip()
+                })
         except Exception as e:
-            print(f"Error in browseruse search: {e}")
+            log_error("Error in Gemini issue search", e)
         
         return issues
     

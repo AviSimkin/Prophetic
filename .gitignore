@@ -21,6 +21,7 @@ wheels/
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -42,3 +43,9 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment and logs
+.env
+logs/
+*.log
+*.jsonl

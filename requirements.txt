@@ -4,5 +4,6 @@ python-dateutil==2.8.2
 requests==2.31.0
 beautifulsoup4==4.12.3
 google-generativeai==0.3.2
-browseruse==0.1.8
+# browseruse==0.1.8  # Optional, not on PyPI - using mock mode
 pandas==2.2.0
+python-dotenv==1.0.1

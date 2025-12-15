@@ -74,25 +74,29 @@ def create_sample_calendar() -> bytes:
             'name': 'Team Meeting',
             'days_offset': 5,
             'duration': 2,
-            'description': 'Weekly team sync'
+            'description': 'Weekly team sync',
+            'location': 'Office Building A, 5th Floor'
         },
         {
             'name': 'Client Presentation',
             'days_offset': 10,
             'duration': 3,
             'description': 'Q4 results presentation'
+            # Missing location - needs user input
         },
         {
             'name': 'Conference',
             'days_offset': 15,
             'duration': 8,
             'description': 'Annual tech conference'
+            # Missing location - needs user input
         },
         {
             'name': 'Workshop',
             'days_offset': 20,
             'duration': 4,
-            'description': 'AI/ML workshop'
+            'description': 'AI/ML workshop',
+            'location': 'Innovation Center, Room 301'
         }
     ]
     
@@ -102,6 +106,8 @@ def create_sample_calendar() -> bytes:
         event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))
         event.add('dtend', base_date + timedelta(days=event_data['days_offset'], hours=event_data['duration']))
         event.add('description', event_data['description'])
+        if 'location' in event_data:
+            event.add('location', event_data['location'])
         cal.add_component(event)
     
     return cal.to_ical()
@@ -135,8 +141,8 @@ def create_israeli_calendar() -> bytes:
             'name': 'השתלמות מקצועית - Jerusalem',
             'days_offset': 14,
             'duration': 4,
-            'description': 'Professional development workshop',
-            'location': 'Jerusalem International Convention Center'
+            'description': 'Professional development workshop'
+            # Missing location - needs user input
         },
         {
             'name': 'כנס טכנולוגיה - Herzliya',
