@@ -61,6 +61,10 @@ class LLMModule:
         if not event.get('departure_time'):
             questions['departure_time'] = f"What time do you plan to depart for '{event['name']}'? (HH:MM format)"
         
+        # Transportation method helps tailor alerts (traffic/transit)
+        if not event.get('transport_mode'):
+            questions['transport_mode'] = "How will you get there? (car/train/bus/walk/bike/rideshare)"
+        
         return questions
     
     def parse_response(self, response: str, question_type: str) -> str:
@@ -90,6 +94,21 @@ class LLMModule:
                 else:
                     raise ValueError(f"Invalid time format. Please use HH:MM format (e.g., 09:30 or 14:30)")
         
+        if question_type == 'transport_mode':
+            norm = response.lower()
+            synonyms = {
+                'car': ['car', 'drive', 'driving', 'auto'],
+                'train': ['train', 'rail', 'light rail', 'tram'],
+                'bus': ['bus'],
+                'walk': ['walk', 'walking', 'on foot'],
+                'bike': ['bike', 'bicycle', 'cycling', 'scooter'],
+                'rideshare': ['uber', 'lyft', 'taxi', 'cab', 'rideshare']
+            }
+            for key, vals in synonyms.items():
+                if any(v in norm for v in vals):
+                    return key
+            return 'other'
+        
         return response
     
     def get_contextual_prompt(self, event: Dict, missing_info: list) -> str:
@@ -108,13 +127,8 @@ class LLMModule:
         
         # Generate AI-powered prompt using Gemini
         try:
-            event_details = f"""
-Event: {event['name']}
-Date: {event['start'].strftime('%Y-%m-%d %H:%M')}
-Description: {event.get('description', 'N/A')}
-"""
-            
-            prompt = f"You are a helpful assistant that asks clear, concise questions to gather event details. Generate a friendly question to ask the user about their {missing_info[0]} for this event:\n{event_details}"
+            field = missing_info[0].replace('_', ' ')
+            prompt = f"Ask a brief, friendly question about {field} for the event '{event['name']}' on {event['start'].strftime('%b %d')}. Max 15 words."
             
             response = self.client.generate_content(prompt)
             response_text = response.text.strip()
