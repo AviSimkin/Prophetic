@@ -36,12 +36,13 @@ class PropheticLogger:
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        file_handler = logging.FileHandler(self.general_log_file)
+        file_handler = logging.FileHandler(self.general_log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
+        console_handler.stream.reconfigure(encoding='utf-8')  # Fix Unicode for Hebrew text
 
         if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == str(self.general_log_file) for h in self.logger.handlers):
             self.logger.addHandler(file_handler)

@@ -46,6 +46,12 @@ if 'event_details' not in st.session_state:
 if 'alerts_checked' not in st.session_state:
     st.session_state.alerts_checked = set()
 
+if 'permission_calendar' not in st.session_state:
+    st.session_state.permission_calendar = False
+
+if 'issues_cache' not in st.session_state:
+    st.session_state.issues_cache = {}
+
 if 'api_key' not in st.session_state:
     st.session_state.api_key = ENV_API_KEY
 
@@ -104,8 +110,18 @@ def main():
             st.info("💡 Timeline is set to real current date in production mode")
             st.divider()
         
-        # API Key configuration
-        st.header("🔑 Gemini API Key (Optional)")
+            # Permissions
+            st.header("🔐 Permissions")
+            st.caption(f"Calendar access: {'Granted' if st.session_state.permission_calendar else 'Not granted'}")
+            if st.button("Give permission to read calendar"):
+                st.session_state.permission_calendar = True
+                log_event('permission_granted', 'calendar_read', {'granted': True})
+                st.success("Permission granted to read calendar")
+
+            st.divider()
+        
+            # API Key configuration
+            st.header("🔑 Gemini API Key (Optional)")
 
         env_key_present = bool(ENV_API_KEY)
         if env_key_present:
@@ -130,10 +146,30 @@ def main():
             st.session_state.scraper = WebScraper(api_key=ENV_API_KEY)
         
     # Main content
-    tab1, tab2, tab3 = st.tabs(["📅 Calendar Upload", "📋 Event Details", "🚨 Alerts"])
+    tabs_list = ["📅 Calendar Upload", "📋 Event Details", "🚨 Alerts"]
+    if st.session_state.demo_mode:
+        tabs_list.append("📊 Debug Logs")
+    
+    tabs = st.tabs(tabs_list)
+    tab1 = tabs[0]
+    tab2 = tabs[1]
+    tab3 = tabs[2]
     
     with tab1:
         st.header("Upload Calendar")
+        if not st.session_state.permission_calendar:
+            st.warning("Calendar access is not permitted yet.")
+            if st.button("Grant permission now"):
+                st.session_state.permission_calendar = True
+                log_event('permission_granted', 'calendar_read', {'granted': True, 'source': 'tab1'})
+                st.success("Permission granted to read calendar")
+                st.rerun()
+            else:
+                st.info("Use the sidebar to grant permission.")
+        
+        if not st.session_state.permission_calendar:
+            # Skip uploader and sample loaders until permission is granted
+            st.stop()
         
         col1, col2 = st.columns([2, 1])
         
@@ -219,14 +255,16 @@ def main():
         if not st.session_state.events:
             st.info("👆 Please upload a calendar file first!")
         else:
-            # Check for events needing details (7 days before)
-            events_needing_details = st.session_state.timeline.get_events_needing_alert(
-                st.session_state.events,
-                days_before=7
-            )
+            # Check for events needing details (within the next 7 days)
+            current_date = st.session_state.timeline.get_current_date()
+            events_needing_details = [
+                event for event in st.session_state.events
+                if event['start'] >= current_date and 
+                   (event['start'] - current_date).days <= 7
+            ]
             
             if events_needing_details:
-                st.success(f"🔔 {len(events_needing_details)} event(s) need details (7 days ahead)")
+                st.success(f"🔔 {len(events_needing_details)} event(s) within 7 days need details")
                 
                 for event in events_needing_details:
                     event_id = f"{event['name']}_{event['start']}"
@@ -257,6 +295,14 @@ def main():
                                         value=current_value,
                                         key=f"{event_id}_{field}"
                                     )
+                                elif field == 'transport_mode':
+                                    options = ['car', 'train', 'bus', 'walk', 'bike', 'rideshare', 'other']
+                                    value = st.selectbox(
+                                        "Transportation method",
+                                        options,
+                                        index=(options.index(current_value) if current_value in options else 0),
+                                        key=f"{event_id}_{field}"
+                                    )
                                 else:  # time fields
                                     value = st.text_input(
                                         question,
@@ -284,7 +330,7 @@ def main():
                         else:
                             st.success("✅ All details completed for this event!")
             else:
-                st.info("No events need details collection at the current simulated date. Advance the timeline to 7 days before an event.")
+                st.info("No events within the next 7 days. Advance the timeline or add events closer to today.")
     
     with tab3:
         st.header("Alerts & Potential Issues")
@@ -319,14 +365,22 @@ def main():
                                 
                                 if details.get('location'):
                                     st.write(f"**Location:** {details['location']}")
+                                    if details.get('transport_mode'):
+                                        st.write(f"**Transport:** {details['transport_mode']}")
                                     
-                                    # Run web scraping for issues
-                                    with st.spinner("🔍 Checking for potential issues..."):
-                                        event_with_details = {**event, **details}
-                                        issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                    # Check cache first to avoid duplicate LLM calls
+                                    cache_key = f"{event_id}_{details.get('location')}_{event['start'].strftime('%Y%m%d')}_{details.get('transport_mode','na')}"
+                                    
+                                    if cache_key not in st.session_state.issues_cache:
+                                        # Run web scraping for issues only if not cached
+                                        with st.spinner("🔍 Checking for potential issues..."):
+                                            event_with_details = {**event, **details}
+                                            issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                            st.session_state.issues_cache[cache_key] = issues
+                                    else:
+                                        issues = st.session_state.issues_cache[cache_key]
                                     
                                     if issues:
-                                        st.warning(f"Found {len(issues)} potential issue(s):")
                                         for issue in issues:
                                             severity_icon = {
                                                 'warning': '⚠️',
@@ -334,7 +388,13 @@ def main():
                                                 'critical': '🚨'
                                             }.get(issue['severity'], 'ℹ️')
                                             
-                                            st.markdown(f"{severity_icon} **{issue['type'].title()}**: {issue['message']}")
+                                            # Short notification-style alert
+                                            st.markdown(f"{severity_icon} {issue['message']}")
+                                            
+                                            # Optional: Add expandable details if available
+                                            if issue.get('details'):
+                                                with st.expander("🔍 See details"):
+                                                    st.write(issue['details'])
                                     else:
                                         st.success("✅ No issues detected!")
                                     
@@ -358,6 +418,70 @@ def main():
                 st.divider()
                 st.subheader("✅ Reviewed Alerts")
                 st.write(f"You have reviewed {len(st.session_state.alerts_checked)} alert(s)")
+    
+    # Debug Logs tab (only visible in demo mode)
+    if st.session_state.demo_mode and len(tabs) > 3:
+        with tabs[3]:
+            st.header("Debug Logs")
+            st.markdown("*Session activity and LLM interactions*")
+            
+            logger = st.session_state.logger
+            summary = logger.get_session_summary()
+            
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Actions", summary['events_count'])
+            with col2:
+                st.metric("LLM Calls", summary['llm_calls_count'])
+            with col3:
+                st.metric("Input Tokens", summary['total_tokens']['input'])
+            with col4:
+                st.metric("Output Tokens", summary['total_tokens']['output'])
+            
+            st.divider()
+            
+            # LLM calls section
+            st.subheader("🤖 LLM Interactions")
+            if logger.session_data['llm_calls']:
+                for i, call in enumerate(logger.session_data['llm_calls']):
+                    timestamp = call['timestamp'].split('T')[1][:8] if 'T' in call['timestamp'] else call['timestamp']
+                    purpose = call['metadata'].get('purpose', 'N/A')
+                    tokens = f"{call.get('input_tokens', '?')} in + {call.get('output_tokens', '?')} out"
+                    
+                    with st.expander(f"#{i+1} [{timestamp}] {purpose} ({tokens})", expanded=False):
+                        col1, col2 = st.columns([1, 1])
+                        
+                        with col1:
+                            st.markdown("**📤 Prompt:**")
+                            st.code(call['prompt'], language='text')
+                        
+                        with col2:
+                            st.markdown("**📥 Response:**")
+                            st.code(call['response'], language='text')
+                        
+                        if call.get('metadata'):
+                            st.markdown("**Metadata:**")
+                            st.json(call['metadata'])
+            else:
+                st.info("No LLM calls yet")
+            
+            st.divider()
+            
+            # Activity events section
+            st.subheader("📋 Activity Log")
+            if logger.session_data['events']:
+                for event in logger.session_data['events']:
+                    timestamp = event['timestamp'].split('T')[1][:8] if 'T' in event['timestamp'] else event['timestamp']
+                    details_str = ""
+                    if event.get('details'):
+                        if isinstance(event['details'], dict):
+                            details_str = f" | {', '.join(f'{k}: {v}' for k, v in event['details'].items())}"
+                        else:
+                            details_str = f" | {event['details']}"
+                    st.text(f"[{timestamp}] {event['type']}: {event['name']}{details_str}")
+            else:
+                st.info("No activity yet")
 
 
 if __name__ == "__main__":

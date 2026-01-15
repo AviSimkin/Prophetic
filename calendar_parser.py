@@ -55,7 +55,7 @@ def parse_calendar_file(file_content: bytes) -> List[Dict]:
 
 def create_sample_calendar() -> bytes:
     """
-    Create a sample .ics calendar file for testing
+    Create a sample .ics calendar file for testing - with first event on Dec 30 at 19:00
     
     Returns:
         Bytes of sample calendar file
@@ -66,45 +66,59 @@ def create_sample_calendar() -> bytes:
     cal.add('prodid', '-//Prophetic Calendar//EN')
     cal.add('version', '2.0')
     
-    # Create sample events
-    base_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Create sample events with first one on Dec 30 at 19:00
+    base_date = datetime(2025, 12, 30, 19, 0, 0)  # Dec 30, 2025 at 19:00
     
     events_data = [
         {
-            'name': 'Team Meeting',
-            'days_offset': 5,
-            'duration': 2,
-            'description': 'Weekly team sync',
-            'location': 'Office Building A, 5th Floor'
-        },
-        {
-            'name': 'Client Presentation',
-            'days_offset': 10,
+            'name': 'Evening Dinner Meeting',
+            'start': base_date,
             'duration': 3,
-            'description': 'Q4 results presentation'
+            'description': 'Important dinner with clients'
             # Missing location - needs user input
         },
         {
-            'name': 'Conference',
-            'days_offset': 15,
+            'name': 'Morning Workout Session',
+            'start': datetime(2026, 1, 2, 7, 30, 0),
+            'duration': 1.5,
+            'description': 'Personal training session',
+            'location': 'City Gym, Downtown'
+        },
+        {
+            'name': 'Project Kickoff',
+            'start': datetime(2026, 1, 5, 10, 0, 0),
+            'duration': 2,
+            'description': 'Q1 2026 project planning'
+            # Missing location - needs user input
+        },
+        {
+            'name': 'Lunch with Team',
+            'start': datetime(2026, 1, 7, 12, 30, 0),
+            'duration': 1.5,
+            'description': 'Team building lunch',
+            'location': 'The Garden Restaurant'
+        },
+        {
+            'name': 'Tech Conference',
+            'start': datetime(2026, 1, 10, 9, 0, 0),
             'duration': 8,
-            'description': 'Annual tech conference'
+            'description': 'Annual technology conference'
             # Missing location - needs user input
         },
         {
-            'name': 'Workshop',
-            'days_offset': 20,
-            'duration': 4,
-            'description': 'AI/ML workshop',
-            'location': 'Innovation Center, Room 301'
+            'name': 'Doctor Appointment',
+            'start': datetime(2026, 1, 12, 15, 0, 0),
+            'duration': 1,
+            'description': 'Regular checkup'
+            # Missing location - needs user input
         }
     ]
     
     for event_data in events_data:
         event = Event()
         event.add('summary', event_data['name'])
-        event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))
-        event.add('dtend', base_date + timedelta(days=event_data['days_offset'], hours=event_data['duration']))
+        event.add('dtstart', event_data['start'])
+        event.add('dtend', event_data['start'] + timedelta(hours=event_data['duration']))
         event.add('description', event_data['description'])
         if 'location' in event_data:
             event.add('location', event_data['location'])
@@ -131,25 +145,46 @@ def create_israeli_calendar() -> bytes:
     
     events_data = [
         {
-            'name': 'פגישה עם לקוח - Tel Aviv',
-            'days_offset': 7,
+            'name': 'פגישה עסקית - Tel Aviv',
+            'days_offset': 3,
             'duration': 2,
-            'description': 'Client meeting in Tel Aviv office',
-            'location': 'Rothschild Blvd, Tel Aviv'
-        },
-        {
-            'name': 'השתלמות מקצועית - Jerusalem',
-            'days_offset': 14,
-            'duration': 4,
-            'description': 'Professional development workshop'
+            'description': 'Important business meeting with startup founders'
             # Missing location - needs user input
         },
         {
-            'name': 'כנס טכנולוגיה - Herzliya',
-            'days_offset': 21,
-            'duration': 8,
-            'description': 'Annual technology conference',
-            'location': 'Herzliya Pituach'
+            'name': 'אירוע משפחתי - Haifa',
+            'days_offset': 6,
+            'duration': 4,
+            'description': 'Family celebration dinner',
+            'location': 'German Colony, Haifa'
+        },
+        {
+            'name': 'כנס היי-טק - Herzliya',
+            'days_offset': 9,
+            'duration': 6,
+            'description': 'Annual Hi-Tech conference and expo'
+            # Missing location - needs user input
+        },
+        {
+            'name': 'טיול מאורגן - Dead Sea',
+            'days_offset': 12,
+            'duration': 10,
+            'description': 'Day trip to the Dead Sea with colleagues',
+            'location': 'Ein Bokek, Dead Sea'
+        },
+        {
+            'name': 'השתלמות מקצועית - Jerusalem',
+            'days_offset': 8,
+            'duration': 3,
+            'description': 'Professional development workshop on AI'
+            # Missing location - needs user input
+        },
+        {
+            'name': 'ארוחת צהריים - Jaffa',
+            'days_offset': 5,
+            'duration': 2,
+            'description': 'Lunch meeting with potential investors',
+            'location': 'Old Jaffa Port'
         }
     ]
     
