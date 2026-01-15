@@ -13,7 +13,7 @@ from calendar_parser import parse_calendar_file, create_sample_calendar, create_
 from llm_module import LLMModule
 from web_scraper import WebScraper
 from timeline_simulator import TimelineSimulator
-from prophetic_logger import get_logger, log_event, log_info
+from prophetic_logger import get_logger, log_event, log_info, log_error
 
 
 # Page configuration
