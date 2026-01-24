@@ -5,11 +5,44 @@ from icalendar import Calendar, Event
 from datetime import datetime, time
 from typing import List, Dict
 import io
+import pytz
+
+
+def _normalize_datetime(dt):
+    """
+    Normalize datetime to be timezone-naive for consistent comparisons.
+    Converts timezone-aware datetimes to UTC and removes timezone info.
+    
+    Args:
+        dt: datetime object (aware or naive) or date object
+        
+    Returns:
+        Timezone-naive datetime object
+    """
+    from datetime import date
+    
+    if dt is None:
+        return None
+    
+    # If it's a date object (not datetime), convert to datetime at midnight
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        return datetime.combine(dt, time())
+    
+    # If it's already a datetime
+    if isinstance(dt, datetime):
+        # If timezone-aware, convert to UTC and remove timezone
+        if dt.tzinfo is not None and dt.utcoffset() is not None:
+            return dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        # If timezone-naive, return as is
+        return dt
+    
+    return dt
 
 
 def parse_calendar_file(file_content: bytes) -> List[Dict]:
     """
-    Parse an .ics calendar file and extract events
+    Parse an .ics calendar file and extract events.
+    Handles both timezone-aware and timezone-naive datetimes robustly.
     
     Args:
         file_content: Raw bytes from uploaded calendar file
@@ -24,30 +57,23 @@ def parse_calendar_file(file_content: bytes) -> List[Dict]:
         
         for component in cal.walk():
             if component.name == "VEVENT":
+                start_dt = component.get('dtstart').dt if component.get('dtstart') else None
+                end_dt = component.get('dtend').dt if component.get('dtend') else None
+                
                 event = {
                     'name': str(component.get('summary', 'Untitled Event')),
-                    'start': component.get('dtstart').dt if component.get('dtstart') else None,
-                    'end': component.get('dtend').dt if component.get('dtend') else None,
+                    'start': _normalize_datetime(start_dt),
+                    'end': _normalize_datetime(end_dt),
                     'description': str(component.get('description', '')),
                     'location': str(component.get('location', '')),
                 }
-                
-                # Convert date to datetime if needed
-                if isinstance(event['start'], datetime):
-                    event['start'] = event['start']
-                else:
-                    # If it's a date object, convert to datetime at midnight
-                    event['start'] = datetime.combine(event['start'], time())
-                    
-                if event['end'] and not isinstance(event['end'], datetime):
-                    event['end'] = datetime.combine(event['end'], time())
                 
                 events.append(event)
                 
     except Exception as e:
         raise ValueError(f"Error parsing calendar file: {str(e)}")
     
-    # Sort events by start date
+    # Sort events by start date (now all datetimes are normalized)
     events.sort(key=lambda x: x['start'] if x['start'] else datetime.max)
     
     return events

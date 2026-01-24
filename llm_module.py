@@ -52,18 +52,17 @@ class LLMModule:
         questions = {}
         
         # Check what information is missing
+        # Location is most important - ask first
         if not event.get('location') or event['location'] == '':
-            questions['location'] = f"Where will the event '{event['name']}' take place?"
+            questions['location'] = f"Where is '{event['name']}' taking place?"
         
         if not event.get('arrival_time'):
-            questions['arrival_time'] = f"What time do you need to arrive for '{event['name']}'? (HH:MM format)"
+            questions['arrival_time'] = f"What time do you need to arrive for '{event['name']}'?"
         
         if not event.get('departure_time'):
-            questions['departure_time'] = f"What time do you plan to depart for '{event['name']}'? (HH:MM format)"
+            questions['departure_time'] = f"What time do you plan to leave for '{event['name']}'?"
         
-        # Transportation method helps tailor alerts (traffic/transit)
-        if not event.get('transport_mode'):
-            questions['transport_mode'] = "How will you get there? (car/train/bus/walk/bike/rideshare)"
+        # Note: transportation_method is handled by the dropdown in app.py
         
         return questions
     
@@ -94,20 +93,7 @@ class LLMModule:
                 else:
                     raise ValueError(f"Invalid time format. Please use HH:MM format (e.g., 09:30 or 14:30)")
         
-        if question_type == 'transport_mode':
-            norm = response.lower()
-            synonyms = {
-                'car': ['car', 'drive', 'driving', 'auto'],
-                'train': ['train', 'rail', 'light rail', 'tram'],
-                'bus': ['bus'],
-                'walk': ['walk', 'walking', 'on foot'],
-                'bike': ['bike', 'bicycle', 'cycling', 'scooter'],
-                'rideshare': ['uber', 'lyft', 'taxi', 'cab', 'rideshare']
-            }
-            for key, vals in synonyms.items():
-                if any(v in norm for v in vals):
-                    return key
-            return 'other'
+        # Location doesn't need special validation, just return as-is
         
         return response
     

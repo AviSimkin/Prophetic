@@ -39,10 +39,19 @@ class PropheticLogger:
         file_handler = logging.FileHandler(self.general_log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
-        console_handler = logging.StreamHandler()
+        
+        # Fix Unicode for Hebrew text by using UTF-8 encoding for console
+        import sys
+        console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
-        console_handler.stream.reconfigure(encoding='utf-8')  # Fix Unicode for Hebrew text
+        try:
+            # Try to set UTF-8 encoding for the stream
+            if hasattr(console_handler.stream, 'reconfigure'):
+                console_handler.stream.reconfigure(encoding='utf-8')
+        except Exception:
+            # If reconfigure fails, just continue without it
+            pass
 
         if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == str(self.general_log_file) for h in self.logger.handlers):
             self.logger.addHandler(file_handler)

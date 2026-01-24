@@ -12,21 +12,21 @@ class TimelineSimulator:
     
     def __init__(self, demo_mode: bool = True):
         self.demo_mode = demo_mode
-        self.simulated_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self.simulated_date = datetime.now()
     
     def set_demo_mode(self, demo_mode: bool):
         """Enable or disable demo mode"""
         self.demo_mode = demo_mode
         if not demo_mode:
             # Reset to current date when exiting demo mode
-            self.simulated_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            self.simulated_date = datetime.now()
     
     def get_current_date(self) -> datetime:
         """Get the current date (simulated in demo mode, real otherwise)"""
         if self.demo_mode:
             return self.simulated_date
         else:
-            return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            return datetime.now()
     
     def advance_days(self, days: int):
         """
@@ -38,6 +38,40 @@ class TimelineSimulator:
         if self.demo_mode:
             self.simulated_date += timedelta(days=days)
     
+    def advance_hours(self, hours: int):
+        """
+        Advance the simulated timeline by specified hours (only works in demo mode)
+        
+        Args:
+            hours: Number of hours to advance
+        """
+        if self.demo_mode:
+            self.simulated_date += timedelta(hours=hours)
+    
+    def advance_minutes(self, minutes: int):
+        """
+        Advance the simulated timeline by specified minutes (only works in demo mode)
+        
+        Args:
+            minutes: Number of minutes to advance
+        """
+        if self.demo_mode:
+            self.simulated_date += timedelta(minutes=minutes)
+    
+    def set_time(self, hour: int, minute: int, second: int = 0):
+        """
+        Set the time of day for the simulated date (only works in demo mode)
+        
+        Args:
+            hour: Hour (0-23)
+            minute: Minute (0-59)
+            second: Second (0-59), defaults to 0
+        """
+        if self.demo_mode:
+            self.simulated_date = self.simulated_date.replace(
+                hour=hour, minute=minute, second=second, microsecond=0
+            )
+    
     def set_date(self, date: datetime):
         """
         Set the simulated date to a specific datetime (only works in demo mode)
@@ -46,11 +80,11 @@ class TimelineSimulator:
             date: Target datetime
         """
         if self.demo_mode:
-            self.simulated_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            self.simulated_date = date
     
     def reset(self):
-        """Reset simulator to current real date"""
-        self.simulated_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        """Reset simulator to current real date and time"""
+        self.simulated_date = datetime.now()
     
     def get_upcoming_events(self, events: List[Dict], days_ahead: int = 30) -> List[Dict]:
         """
