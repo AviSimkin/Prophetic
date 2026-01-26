@@ -663,10 +663,10 @@ def main():
                                 # Travel info
                                 if details.get('arrival_time'):
                                     st.divider()
-                                    st.markdown("**Travel Information**")
-                                    st.info(f"💡 Suggested arrival time: {details['arrival_time']}")
+                                    st.markdown("**Your Schedule**")
+                                    st.info(f"🕐 Arrival time: {details['arrival_time']}")
                                     if details.get('departure_time'):
-                                        st.info(f"🚗 Planned departure: {details['departure_time']}")
+                                        st.info(f"🚀 Departure time: {details['departure_time']}")
                             else:
                                 st.warning("⚠️ No location available for this event")
                             
