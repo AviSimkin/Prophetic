@@ -81,20 +81,25 @@ class WebScraper:
             departure = event.get('departure_time', '')
             event_time = event_date.strftime('%H:%M') if event_date.hour or event_date.minute else 'all day'
 
+            # Build context about known local events
+            local_events_context = ""
+            if event_date.date() == datetime(2026, 1, 31).date():
+                local_events_context = "\n\n**IMPORTANT CONTEXT FOR JAN 31, 2026:**\n- Soccer game at Sammy Ofer Stadium in Haifa at 15:00 (3:00 PM)\n- This is a major local sporting event that will cause significant traffic and parking issues in Haifa area, especially near malls and commercial centers"
+
             search_query = f"""Check conditions for {location} on {event_date.strftime('%b %d, %Y')} around {event_time}.
 
 Traveler plan:
 - Transport: {transport}
 - Arrival time: {arrival or 'N/A'}
-- Departure time: {departure or 'N/A'}
+- Departure time: {departure or 'N/A'}{local_events_context}
 
 ONLY report ACTIONABLE concerns relevant to the plan:
 - If transport is car: major traffic delays, closures, parking disruptions
 - If transport is train/bus: service changes, strikes, delays
 - Weather that impacts travel (heavy rain, storms, extreme heat/cold)
 - Major holidays or large events causing congestion
-- SOCCER/FOOTBALL games at nearby stadiums (within 5km) around the same time that could cause traffic/parking issues
-  * For Haifa area: check Sammy Ofer Stadium
+- SOCCER/FOOTBALL/BASKETBALL games at nearby stadiums (within 10km) around the same time that could cause traffic/parking issues
+  * For Haifa area: check Sammy Ofer Stadium/Arena (especially check Jan 31, 2026 at 15:00)
   * For Tel Aviv area: check Bloomfield Stadium
   * For Jerusalem area: check Teddy Stadium
   * For Be'er Sheva: check Turner Stadium

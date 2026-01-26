@@ -56,6 +56,7 @@ class PropheticLogger:
             "session_name": self.session_name,
             "llm_calls": [],
             "events": [],
+            "errors": [],
             "total_tokens": {"input": 0, "output": 0, "total": 0},
         }
 
@@ -119,6 +120,13 @@ class PropheticLogger:
         self.logger.warning(message)
 
     def log_error(self, message: str, error: Optional[Exception] = None) -> None:
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "message": message,
+            "error": str(error) if error else None,
+        }
+        self.session_data["errors"].append(entry)
+
         if error:
             self.logger.error(f"{message}: {error}", exc_info=True)
         else:

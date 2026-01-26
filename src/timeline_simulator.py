@@ -55,19 +55,20 @@ class TimelineSimulator:
         return sorted(upcoming, key=lambda x: x['start'])
 
     def get_events_needing_alert(self, events: List[Dict], days_before: int) -> List[Dict]:
-        current_date = self.get_current_date()
-        target_date = current_date + timedelta(days=days_before)
+        current_date = self.get_current_date().date()
 
         events_needing_alert = []
         for event in events:
-            event_date = event['start'].replace(hour=0, minute=0, second=0, microsecond=0)
-            if event_date == target_date:
+            event_date = event['start'].date()
+            days_until = (event_date - current_date).days
+            # Alert for events happening from today up to the threshold window
+            if 0 <= days_until <= days_before:
                 events_needing_alert.append(event)
 
-        return events_needing_alert
+        return sorted(events_needing_alert, key=lambda x: x['start'])
 
     def days_until_event(self, event: Dict) -> int:
-        current_date = self.get_current_date()
-        event_date = event['start'].replace(hour=0, minute=0, second=0, microsecond=0)
+        current_date = self.get_current_date().date()
+        event_date = event['start'].date()
         delta = event_date - current_date
         return delta.days

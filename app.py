@@ -531,14 +531,16 @@ def main():
                                 st.error(str(e))
                         
                         # Transportation method
-                        current_transport = details.get('transportation_method', 'Car')
+                        current_transport = details.get('transportation_method', '')
+                        transport_options = [''] + st.session_state.transportation_methods
+                        current_idx = transport_options.index(current_transport) if current_transport in transport_options else 0
                         transport_method = st.selectbox(
                             "🚗 How will you get there?",
-                            st.session_state.transportation_methods,
-                            index=st.session_state.transportation_methods.index(current_transport) if current_transport in st.session_state.transportation_methods else 0,
+                            transport_options,
+                            index=current_idx,
                             key=f"{event_id}_transport"
                         )
-                        if transport_method != current_transport:
+                        if transport_method and transport_method != current_transport:
                             details['transportation_method'] = transport_method
                         
                         st.divider()
@@ -553,7 +555,7 @@ def main():
                             else:
                                 missing = [f for f in required_fields if not details.get(f)]
                                 st.warning(f"⚠️ Please fill in: {', '.join(missing)}")
-                        else:
+                        elif all(details.get(field) for field in required_fields):
                             st.success("✅ All details completed for this event!")
             else:
                 st.info("No events within the next 7 days. Advance the timeline or add events closer to today.")
@@ -565,25 +567,34 @@ def main():
         if not st.session_state.events:
             st.info("👆 Please upload a calendar file first!")
         else:
-            # Check for alerts (7 days and 1 day before)
-            alert_days = [7, 1]
+            # Check for alerts (1 day and 7 days before, no duplicates)
+            alert_days = [1, 7]
+            seen_event_ids = set()
             
             for days_before in alert_days:
                 events_for_alert = st.session_state.timeline.get_events_needing_alert(
                     st.session_state.events,
                     days_before=days_before
                 )
+
+                # Avoid showing the same event in multiple windows
+                events_for_alert = [
+                    event for event in events_for_alert
+                    if f"{event['name']}_{event['start']}" not in seen_event_ids
+                ]
                 
                 if events_for_alert:
-                    st.subheader(f"🔔 Alerts for {days_before} day(s) before event")
+                    st.subheader(f"🔔 Alerts within {days_before} day(s)")
                     
                     for event in events_for_alert:
                         event_id = f"{event['name']}_{event['start']}"
-                        alert_key = f"{event_id}_{days_before}days"
+                        days_until = st.session_state.timeline.days_until_event(event)
+                        seen_event_ids.add(event_id)
                         
-                        # Check if we've already processed this alert
-                        if alert_key not in st.session_state.alerts_checked:
-                            # Increment nudge counters when showing a new alert
+                        # Check if we've already reviewed this event's alert (tracked by event_id only)
+                        # This prevents the same event from triggering multiple times as it enters different alert windows
+                        if event_id not in st.session_state.alerts_checked:
+                            # Increment nudge counters only once per event
                             current_date = st.session_state.timeline.get_current_date().strftime('%Y-%m-%d')
                             current_week = st.session_state.timeline.get_current_date().strftime('%Y-W%W')
                             
@@ -593,8 +604,8 @@ def main():
                             if current_week not in st.session_state.nudge_counters['weekly']:
                                 st.session_state.nudge_counters['weekly'][current_week] = 0
                             
-                            # Increment counters (only once per alert)
-                            nudge_counted_key = f"{alert_key}_counted"
+                            # Increment counters (only once per event, first time shown)
+                            nudge_counted_key = f"{event_id}_alert_nudge_counted"
                             if nudge_counted_key not in st.session_state:
                                 st.session_state.nudge_counters['daily'][current_date] += 1
                                 st.session_state.nudge_counters['weekly'][current_week] += 1
@@ -602,29 +613,35 @@ def main():
                                 log_event('nudge_shown', event['name'], {'days_before': days_before, 'date': current_date})
                             
                             with st.expander(f"⚠️ {event['name']} - {event['start'].strftime('%Y-%m-%d')}", expanded=True):
-                                st.write(f"**Event is in {days_before} day(s)**")
+                                st.write(f"**Event is in {days_until} day(s)**")
                                 
-                                # Get event details
+                                # Get event details (use calendar location as fallback)
                                 details = st.session_state.event_details.get(event_id, {})
+                                location = details.get('location') or event.get('location', '')
                                 
-                                if details.get('location'):
-                                    st.write(f"**Location:** {details['location']}")
+                                if location:
+                                    st.write(f"**Location:** {location}")
                                     if details.get('transportation_method'):
                                         st.write(f"**Transport:** {details['transportation_method']}")
+
+                                    # Track whether we actually ran an issue check (to avoid false "no issues" messages)
+                                    issues = None
+                                    ran_check = False
+                                    cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
                                     
                                     # Check cache first to avoid duplicate LLM calls
-                                    cache_key = f"{event_id}_{details.get('location')}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
-                                    
-                                    if cache_key not in st.session_state.issues_cache:
+                                    if cache_key in st.session_state.issues_cache:
+                                        issues = st.session_state.issues_cache[cache_key]
+                                        ran_check = True
+                                    else:
                                         # Run web scraping for issues only if not cached
                                         with st.spinner("🔍 Checking for potential issues..."):
-                                            event_with_details = {**event, **details}
+                                            event_with_details = {**event, **details, 'location': location}
                                             issues = st.session_state.scraper.check_for_issues(event_with_details)
                                             st.session_state.issues_cache[cache_key] = issues
-                                    else:
-                                        issues = st.session_state.issues_cache[cache_key]
+                                            ran_check = True
                                     
-                                    if issues:
+                                    if ran_check and issues:
                                         for issue in issues:
                                             severity_icon = {
                                                 'warning': '⚠️',
@@ -635,11 +652,10 @@ def main():
                                             # Short notification-style alert
                                             st.markdown(f"{severity_icon} {issue['message']}")
                                             
-                                            # Optional: Add expandable details if available
+                                            # Optional: Show details directly (can't nest expanders)
                                             if issue.get('details'):
-                                                with st.expander("🔍 See details"):
-                                                    st.write(issue['details'])
-                                    else:
+                                                st.caption(f"ℹ️ {issue['details']}")
+                                    elif ran_check and issues == []:
                                         st.success("✅ No issues detected!")
                                     
                                     # Travel time estimate
@@ -653,8 +669,8 @@ def main():
                                 else:
                                     st.warning("⚠️ Location details not yet provided. Please complete event details first.")
                                 
-                                if st.button(f"✓ Mark as Reviewed", key=f"reviewed_{alert_key}"):
-                                    st.session_state.alerts_checked.add(alert_key)
+                                if st.button(f"✓ Mark as Reviewed", key=f"reviewed_{event_id}"):
+                                    st.session_state.alerts_checked.add(event_id)
                                     st.rerun()
             
             # Show reviewed alerts
@@ -726,6 +742,19 @@ def main():
             else:
                 st.info("No LLM calls yet")
             
+            st.divider()
+
+            # Error log section
+            st.subheader("⚠️ Errors")
+            if logger.session_data.get('errors'):
+                for err in logger.session_data['errors']:
+                    timestamp = err['timestamp'].split('T')[1][:8] if 'T' in err['timestamp'] else err['timestamp']
+                    msg = err.get('message', '')
+                    detail = err.get('error') or ''
+                    st.error(f"[{timestamp}] {msg}\n{detail}")
+            else:
+                st.info("No errors recorded")
+
             st.divider()
             
             # Activity events section

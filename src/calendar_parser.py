@@ -102,6 +102,13 @@ def create_sample_calendar() -> bytes:
             'start': datetime(2026, 1, 12, 15, 0, 0),
             'duration': 1,
             'description': 'Regular checkup'
+        },
+        {
+            'name': 'Sammy Offer Game',
+            'start': datetime(2026, 1, 31, 15, 0, 0),
+            'duration': 2,
+            'description': 'Soccer game - important local event to check for conflicts',
+            'location': 'Sammy Offer Stadium'
         }
     ]
 
@@ -162,11 +169,11 @@ def create_israeli_calendar() -> bytes:
             'description': 'Professional development workshop on AI'
         },
         {
-            'name': 'ארוחת צהריים - Jaffa',
+            'name': 'ארוחת צהריים - Haifa',
             'days_offset': 5,
             'duration': 2,
             'description': 'Lunch meeting with potential investors',
-            'location': 'Old Jaffa Port'
+            'location': 'Azrieli Mall Haifa'
         }
     ]
 
