@@ -46,6 +46,12 @@ if 'event_details' not in st.session_state:
 if 'alerts_checked' not in st.session_state:
     st.session_state.alerts_checked = set()
 
+if 'details_ignored' not in st.session_state:
+    st.session_state.details_ignored = set()  # event_ids that user chose to ignore detail requests
+
+if 'detail_request_timestamps' not in st.session_state:
+    st.session_state.detail_request_timestamps = {}  # event_id -> timestamp when first shown
+
 if 'permission_calendar' not in st.session_state:
     st.session_state.permission_calendar = False
 
@@ -210,7 +216,7 @@ def main():
             st.session_state.scraper = WebScraper(api_key=ENV_API_KEY)
         
     # Main content
-    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "📋 Event Details", "🚨 Alerts"]
+    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "� Notifications"]
     if st.session_state.demo_mode:
         tabs_list.append("📊 Nudge Stats")
         tabs_list.append("📊 Debug Logs")
@@ -218,10 +224,9 @@ def main():
     tabs = st.tabs(tabs_list)
     tab_setup = tabs[0]
     tab1 = tabs[1]
-    tab2 = tabs[2]
-    tab3 = tabs[3]
-    tab_nudges = tabs[4] if st.session_state.demo_mode else None
-    tab_debug = tabs[5] if st.session_state.demo_mode else None
+    tab_notifications = tabs[2]
+    tab_nudges = tabs[3] if st.session_state.demo_mode else None
+    tab_debug = tabs[4] if st.session_state.demo_mode else None
     
     with tab_setup:
         st.header("Setup Your Addresses")
@@ -379,305 +384,278 @@ def main():
             else:
                 st.info("No upcoming events in the next 60 days from current simulated date.")
     
-    with tab2:
-        st.header("Complete Event Details")
-        st.markdown("*Provide additional information for your events*")
+    with tab_notifications:
+        st.header("🔔 Notifications")
+        st.markdown("*Event details and alerts in chronological order*")
         
         if not st.session_state.events:
             st.info("👆 Please upload a calendar file first!")
         else:
-            # Check for events needing details (within the next 7 days)
+            # Get events within the next 7 days (this is when we start notifying)
             current_date = st.session_state.timeline.get_current_date()
-            events_needing_details = [
-                event
-                for event in st.session_state.events
+            events_within_7days = [
+                event for event in st.session_state.events
                 if event.get('start')
                 and event['start'] >= current_date
-                and (event['start'] - current_date).days <= 7
+                and st.session_state.timeline.days_until_event(event) <= 7
                 and is_actionable_event(event)
             ]
             
-            if events_needing_details:
-                st.success(f"🔔 {len(events_needing_details)} event(s) within 7 days need details")
-                
-                for event in events_needing_details:
-                    event_id = f"{event['name']}_{event['start']}"
-                    
-                    # Check if details already collected
-                    if event_id not in st.session_state.event_details:
-                        st.session_state.event_details[event_id] = {}
-                    
-                    details = st.session_state.event_details[event_id]
-
-                    # Count a nudge when we prompt for missing details
-                    required_fields = ['location', 'arrival_time', 'departure_time', 'departure_location', 'transportation_method']
-                    missing_fields = [f for f in required_fields if not details.get(f)]
-                    if missing_fields:
-                        current_date_str = st.session_state.timeline.get_current_date().strftime('%Y-%m-%d')
-                        current_week_str = st.session_state.timeline.get_current_date().strftime('%Y-W%W')
-                        if current_date_str not in st.session_state.nudge_counters['daily']:
-                            st.session_state.nudge_counters['daily'][current_date_str] = 0
-                        if current_week_str not in st.session_state.nudge_counters['weekly']:
-                            st.session_state.nudge_counters['weekly'][current_week_str] = 0
-                        detail_nudge_key = f"{event_id}_details_prompted"
-                        if detail_nudge_key not in st.session_state:
-                            st.session_state.nudge_counters['daily'][current_date_str] += 1
-                            st.session_state.nudge_counters['weekly'][current_week_str] += 1
-                            st.session_state[detail_nudge_key] = True
-                            log_event('nudge_details_prompted', event['name'], {'missing_fields': missing_fields, 'date': current_date_str})
-                    
-                    with st.expander(f"📝 {event['name']} - {event['start'].strftime('%Y-%m-%d')}", expanded=True):
-                        st.write(f"**Event Date:** {event['start'].strftime('%Y-%m-%d %H:%M')}")
-                        
-                        # Departure location selection
-                        st.markdown("**Departure Information:**")
-                        
-                        # Create list of available saved addresses
-                        address_options = []
-                        for addr_info in st.session_state.user_addresses:
-                            if addr_info.get('saved', False) and addr_info['name'] and addr_info['address']:
-                                address_options.append((addr_info['name'], addr_info['address']))
-                        address_options.append(('✏️ Custom', 'custom'))
-                        
-                        # Show helper message if no saved addresses
-                        if len(address_options) == 1:  # Only 'Custom' option
-                            st.info("💡 Tip: Add and save addresses in the Setup tab for quick selection!")
-                        
-                        # Get current departure location
-                        current_departure = details.get('departure_location', '')
-                        
-                        # Departure location selector
-                        departure_labels = [label for label, _ in address_options]
-                        selected_departure_idx = 0
-                        if current_departure:
-                            # Try to find matching address
-                            for idx, (label, addr) in enumerate(address_options):
-                                if addr == current_departure:
-                                    selected_departure_idx = idx
-                                    break
-                        
-                        departure_selection = st.selectbox(
-                            "Departing from:",
-                            departure_labels,
-                            index=selected_departure_idx,
-                            key=f"{event_id}_departure_selector"
-                        )
-                        
-                        # Get the actual address
-                        selected_idx = departure_labels.index(departure_selection)
-                        selected_address = address_options[selected_idx][1]
-                        
-                        if selected_address == 'custom':
-                            custom_departure = st.text_input(
-                                "Enter custom departure address:",
-                                value=current_departure if current_departure not in [addr for _, addr in address_options[:-1]] else '',
-                                key=f"{event_id}_custom_departure"
-                            )
-                            if custom_departure:
-                                details['departure_location'] = custom_departure
-                        else:
-                            details['departure_location'] = selected_address
-                        
-                        st.divider()
-                        
-                        # Event location and timing (most important details)
-                        st.markdown("**Event Details:**")
-                        
-                        # Location - most important!
-                        current_location = details.get('location', event.get('location', ''))
-                        location_value = st.text_input(
-                            f"📍 Where is '{event['name']}' taking place?",
-                            value=current_location,
-                            placeholder="Enter the event address or venue name",
-                            key=f"{event_id}_location"
-                        )
-                        if location_value and location_value != current_location:
-                            details['location'] = location_value
-                        
-                        # Arrival time
-                        current_arrival = details.get('arrival_time', '')
-                        arrival_value = st.text_input(
-                            f"⏰ What time do you need to arrive for '{event['name']}'?",
-                            value=current_arrival,
-                            placeholder="HH:MM (e.g., 09:30)",
-                            key=f"{event_id}_arrival_time"
-                        )
-                        if arrival_value and arrival_value != current_arrival:
-                            try:
-                                parsed_value = st.session_state.llm_module.parse_response(
-                                    arrival_value,
-                                    'arrival_time'
-                                )
-                                details['arrival_time'] = parsed_value
-                            except ValueError as e:
-                                st.error(str(e))
-                        
-                        # Departure time
-                        current_departure_time = details.get('departure_time', '')
-                        departure_value = st.text_input(
-                            f"🚀 What time do you plan to leave for '{event['name']}'?",
-                            value=current_departure_time,
-                            placeholder="HH:MM (e.g., 08:45)",
-                            key=f"{event_id}_departure_time"
-                        )
-                        if departure_value and departure_value != current_departure_time:
-                            try:
-                                parsed_value = st.session_state.llm_module.parse_response(
-                                    departure_value,
-                                    'departure_time'
-                                )
-                                details['departure_time'] = parsed_value
-                            except ValueError as e:
-                                st.error(str(e))
-                        
-                        # Transportation method
-                        current_transport = details.get('transportation_method', '')
-                        transport_options = [''] + st.session_state.transportation_methods
-                        current_idx = transport_options.index(current_transport) if current_transport in transport_options else 0
-                        transport_method = st.selectbox(
-                            "🚗 How will you get there?",
-                            transport_options,
-                            index=current_idx,
-                            key=f"{event_id}_transport"
-                        )
-                        if transport_method and transport_method != current_transport:
-                            details['transportation_method'] = transport_method
-                        
-                        st.divider()
-                        
-                        # Save button
-                        required_fields = ['location', 'arrival_time', 'departure_time', 'departure_location', 'transportation_method']
-                        if st.button(f"💾 Save Details for {event['name']}", key=f"save_{event_id}"):
-                            if all(details.get(field) for field in required_fields):
-                                log_event('event_details_saved', event['name'], details)
-                                st.success("✅ Details saved successfully!")
-                                st.rerun()
-                            else:
-                                missing = [f for f in required_fields if not details.get(f)]
-                                st.warning(f"⚠️ Please fill in: {', '.join(missing)}")
-                        elif all(details.get(field) for field in required_fields):
-                            st.success("✅ All details completed for this event!")
+            # Sort chronologically by event date
+            events_within_7days.sort(key=lambda e: e['start'])
+            
+            if not events_within_7days:
+                st.info("No upcoming events within the next 7 days.")
             else:
-                st.info("No events within the next 7 days. Advance the timeline or add events closer to today.")
-    
-    with tab3:
-        st.header("Alerts & Potential Issues")
-        st.markdown("*Proactive notifications about potential hiccups*")
-        
-        if not st.session_state.events:
-            st.info("👆 Please upload a calendar file first!")
-        else:
-            # Check for alerts (1 day and 7 days before, no duplicates)
-            alert_days = [1, 7]
-            seen_event_ids = set()
-            
-            for days_before in alert_days:
-                events_for_alert = st.session_state.timeline.get_events_needing_alert(
-                    st.session_state.events,
-                    days_before=days_before
-                )
-
-                # Avoid showing the same event in multiple windows
-                events_for_alert = [
-                    event for event in events_for_alert
-                    if f"{event['name']}_{event['start']}" not in seen_event_ids
-                ]
+                st.success(f"📋 {len(events_within_7days)} event(s) within 7 days")
                 
-                if events_for_alert:
-                    st.subheader(f"🔔 Alerts within {days_before} day(s)")
+                for event in events_within_7days:
+                    event_id = f"{event['name']}_{event['start']}"
+                    days_until = st.session_state.timeline.days_until_event(event)
+                    details = st.session_state.event_details.get(event_id, {})
                     
-                    for event in events_for_alert:
-                        event_id = f"{event['name']}_{event['start']}"
-                        days_until = st.session_state.timeline.days_until_event(event)
-                        seen_event_ids.add(event_id)
+                    # Check if detail request should be auto-ignored (24 hours passed)
+                    if event_id in st.session_state.detail_request_timestamps:
+                        request_time = st.session_state.detail_request_timestamps[event_id]
+                        hours_since_request = (datetime.now() - request_time).total_seconds() / 3600
+                        if hours_since_request >= 24 and event_id not in st.session_state.details_ignored:
+                            st.session_state.details_ignored.add(event_id)
+                            log_event('details_auto_ignored', event['name'], {'reason': '24_hours_passed'})
+                    
+                    required_fields = ['location', 'arrival_time', 'departure_time', 'departure_location', 'transportation_method']
+                    details_complete = all(details.get(field) for field in required_fields)
+                    details_ignored = event_id in st.session_state.details_ignored
+                    alert_ignored = event_id in st.session_state.alerts_checked
+                    
+                    # Determine notification type
+                    if not details_complete and not details_ignored:
+                        # Show detail request
+                        notification_type = "detail_request"
+                        icon = "📝"
+                        title = f"{icon} Details Needed: {event['name']}"
+                    elif (details_complete or details_ignored) and not alert_ignored:
+                        # Show alert
+                        notification_type = "alert"
+                        icon = "⚠️"
+                        title = f"{icon} Alert: {event['name']}"
+                    else:
+                        # Already reviewed, skip
+                        continue
+                    
+                    # Record when detail request first shown
+                    if notification_type == "detail_request" and event_id not in st.session_state.detail_request_timestamps:
+                        st.session_state.detail_request_timestamps[event_id] = datetime.now()
+                    
+                    with st.expander(f"{title} - {event['start'].strftime('%Y-%m-%d')}", expanded=True):
+                        st.write(f"**Event is in {days_until} day(s)** • {event['start'].strftime('%Y-%m-%d %H:%M')}")
                         
-                        # Check if we've already reviewed this event's alert (tracked by event_id only)
-                        # This prevents the same event from triggering multiple times as it enters different alert windows
-                        if event_id not in st.session_state.alerts_checked:
-                            # Increment nudge counters only once per event
-                            current_date = st.session_state.timeline.get_current_date().strftime('%Y-%m-%d')
-                            current_week = st.session_state.timeline.get_current_date().strftime('%Y-W%W')
+                        if notification_type == "detail_request":
+                            # Detail request form
+                            st.markdown("### Please provide event details")
                             
-                            # Initialize counters if not present
-                            if current_date not in st.session_state.nudge_counters['daily']:
-                                st.session_state.nudge_counters['daily'][current_date] = 0
-                            if current_week not in st.session_state.nudge_counters['weekly']:
-                                st.session_state.nudge_counters['weekly'][current_week] = 0
+                            # Nudge counter
+                            missing_fields = [f for f in required_fields if not details.get(f)]
+                            current_date_str = current_date.strftime('%Y-%m-%d')
+                            current_week_str = current_date.strftime('%Y-W%W')
+                            detail_nudge_key = f"{event_id}_details_prompted"
+                            if detail_nudge_key not in st.session_state:
+                                if current_date_str not in st.session_state.nudge_counters['daily']:
+                                    st.session_state.nudge_counters['daily'][current_date_str] = 0
+                                if current_week_str not in st.session_state.nudge_counters['weekly']:
+                                    st.session_state.nudge_counters['weekly'][current_week_str] = 0
+                                st.session_state.nudge_counters['daily'][current_date_str] += 1
+                                st.session_state.nudge_counters['weekly'][current_week_str] += 1
+                                st.session_state[detail_nudge_key] = True
+                                log_event('nudge_details_prompted', event['name'], {'missing_fields': missing_fields, 'date': current_date_str})
                             
-                            # Increment counters (only once per event, first time shown)
-                            nudge_counted_key = f"{event_id}_alert_nudge_counted"
-                            if nudge_counted_key not in st.session_state:
-                                st.session_state.nudge_counters['daily'][current_date] += 1
-                                st.session_state.nudge_counters['weekly'][current_week] += 1
-                                st.session_state[nudge_counted_key] = True
-                                log_event('nudge_shown', event['name'], {'days_before': days_before, 'date': current_date})
+                            # Departure location
+                            st.markdown("**Departure Information:**")
+                            address_options = []
+                            for addr_info in st.session_state.user_addresses:
+                                if addr_info.get('saved', False) and addr_info['name'] and addr_info['address']:
+                                    address_options.append((addr_info['name'], addr_info['address']))
+                            address_options.append(('✏️ Custom', 'custom'))
                             
-                            with st.expander(f"⚠️ {event['name']} - {event['start'].strftime('%Y-%m-%d')}", expanded=True):
-                                st.write(f"**Event is in {days_until} day(s)**")
-                                
-                                # Get event details (use calendar location as fallback)
-                                details = st.session_state.event_details.get(event_id, {})
-                                location = details.get('location') or event.get('location', '')
-                                
-                                if location:
-                                    st.write(f"**Location:** {location}")
-                                    if details.get('transportation_method'):
-                                        st.write(f"**Transport:** {details['transportation_method']}")
-
-                                    # Track whether we actually ran an issue check (to avoid false "no issues" messages)
-                                    issues = None
-                                    ran_check = False
-                                    cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
-                                    
-                                    # Check cache first to avoid duplicate LLM calls
-                                    if cache_key in st.session_state.issues_cache:
-                                        issues = st.session_state.issues_cache[cache_key]
-                                        ran_check = True
+                            current_departure = details.get('departure_location', '')
+                            departure_labels = [label for label, _ in address_options]
+                            selected_departure_idx = 0
+                            if current_departure:
+                                for idx, (label, addr) in enumerate(address_options):
+                                    if addr == current_departure:
+                                        selected_departure_idx = idx
+                                        break
+                            
+                            departure_selection = st.selectbox(
+                                "Departing from:",
+                                departure_labels,
+                                index=selected_departure_idx,
+                                key=f"{event_id}_departure_selector"
+                            )
+                            
+                            selected_idx = departure_labels.index(departure_selection)
+                            selected_address = address_options[selected_idx][1]
+                            
+                            if selected_address == 'custom':
+                                custom_departure = st.text_input(
+                                    "Enter custom departure address:",
+                                    value=current_departure if current_departure not in [addr for _, addr in address_options[:-1]] else '',
+                                    key=f"{event_id}_custom_departure"
+                                )
+                                if custom_departure:
+                                    details['departure_location'] = custom_departure
+                            else:
+                                details['departure_location'] = selected_address
+                            
+                            st.divider()
+                            st.markdown("**Event Details:**")
+                            
+                            # Location
+                            current_location = details.get('location', event.get('location', ''))
+                            location_value = st.text_input(
+                                f"📍 Where is '{event['name']}' taking place?",
+                                value=current_location,
+                                placeholder="Enter the event address or venue name",
+                                key=f"{event_id}_location"
+                            )
+                            if location_value and location_value != current_location:
+                                details['location'] = location_value
+                            
+                            # Arrival time
+                            current_arrival = details.get('arrival_time', '')
+                            arrival_value = st.text_input(
+                                f"⏰ What time do you need to arrive?",
+                                value=current_arrival,
+                                placeholder="HH:MM (e.g., 09:30)",
+                                key=f"{event_id}_arrival_time"
+                            )
+                            if arrival_value and arrival_value != current_arrival:
+                                try:
+                                    parsed_value = st.session_state.llm_module.parse_response(arrival_value, 'arrival_time')
+                                    details['arrival_time'] = parsed_value
+                                except ValueError as e:
+                                    st.error(str(e))
+                            
+                            # Departure time
+                            current_departure_time = details.get('departure_time', '')
+                            departure_value = st.text_input(
+                                f"🚀 What time will you leave?",
+                                value=current_departure_time,
+                                placeholder="HH:MM (e.g., 08:45)",
+                                key=f"{event_id}_departure_time"
+                            )
+                            if departure_value and departure_value != current_departure_time:
+                                try:
+                                    parsed_value = st.session_state.llm_module.parse_response(departure_value, 'departure_time')
+                                    details['departure_time'] = parsed_value
+                                except ValueError as e:
+                                    st.error(str(e))
+                            
+                            # Transportation
+                            current_transport = details.get('transportation_method', '')
+                            transport_options = [''] + st.session_state.transportation_methods
+                            current_idx = transport_options.index(current_transport) if current_transport in transport_options else 0
+                            transport_method = st.selectbox(
+                                "🚗 How will you get there?",
+                                transport_options,
+                                index=current_idx,
+                                key=f"{event_id}_transport"
+                            )
+                            if transport_method and transport_method != current_transport:
+                                details['transportation_method'] = transport_method
+                            
+                            st.divider()
+                            
+                            # Action buttons
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button(f"💾 Save Details", key=f"save_{event_id}"):
+                                    if all(details.get(field) for field in required_fields):
+                                        log_event('event_details_saved', event['name'], details)
+                                        st.success("✅ Details saved!")
+                                        st.rerun()
                                     else:
-                                        # Run web scraping for issues only if not cached
-                                        with st.spinner("🔍 Checking for potential issues..."):
-                                            event_with_details = {**event, **details, 'location': location}
-                                            issues = st.session_state.scraper.check_for_issues(event_with_details)
-                                            st.session_state.issues_cache[cache_key] = issues
-                                            ran_check = True
-                                    
-                                    if ran_check and issues:
-                                        for issue in issues:
-                                            severity_icon = {
-                                                'warning': '⚠️',
-                                                'info': 'ℹ️',
-                                                'critical': '🚨'
-                                            }.get(issue['severity'], 'ℹ️')
-                                            
-                                            # Short notification-style alert
-                                            st.markdown(f"{severity_icon} {issue['message']}")
-                                            
-                                            # Optional: Show details directly (can't nest expanders)
-                                            if issue.get('details'):
-                                                st.caption(f"ℹ️ {issue['details']}")
-                                    elif ran_check and issues == []:
-                                        st.success("✅ No issues detected!")
-                                    
-                                    # Travel time estimate
-                                    if details.get('arrival_time'):
-                                        st.divider()
-                                        st.markdown("**Travel Information**")
-                                        # Mock travel estimate
-                                        st.info(f"💡 Suggested arrival time: {details['arrival_time']}")
-                                        if details.get('departure_time'):
-                                            st.info(f"🚗 Planned departure: {details['departure_time']}")
-                                else:
-                                    st.warning("⚠️ Location details not yet provided. Please complete event details first.")
-                                
-                                if st.button(f"✓ Mark as Reviewed", key=f"reviewed_{event_id}"):
-                                    st.session_state.alerts_checked.add(event_id)
+                                        missing = [f for f in required_fields if not details.get(f)]
+                                        st.warning(f"⚠️ Please fill in: {', '.join(missing)}")
+                            
+                            with col2:
+                                if st.button(f"🚫 Ignore", key=f"ignore_details_{event_id}"):
+                                    st.session_state.details_ignored.add(event_id)
+                                    log_event('details_ignored', event['name'], {'by_user': True})
                                     st.rerun()
-            
-            # Show reviewed alerts
-            if st.session_state.alerts_checked:
-                st.divider()
-                st.subheader("✅ Reviewed Alerts")
-                st.write(f"You have reviewed {len(st.session_state.alerts_checked)} alert(s)")
+                        
+                        elif notification_type == "alert":
+                            # Alert with issue checking
+                            location = details.get('location') or event.get('location', '')
+                            
+                            if location:
+                                st.write(f"**Location:** {location}")
+                                if details.get('transportation_method'):
+                                    st.write(f"**Transport:** {details['transportation_method']}")
+                                
+                                # Nudge counter for alerts
+                                alert_nudge_key = f"{event_id}_alert_nudge_counted"
+                                if alert_nudge_key not in st.session_state:
+                                    current_date_str = current_date.strftime('%Y-%m-%d')
+                                    current_week_str = current_date.strftime('%Y-W%W')
+                                    if current_date_str not in st.session_state.nudge_counters['daily']:
+                                        st.session_state.nudge_counters['daily'][current_date_str] = 0
+                                    if current_week_str not in st.session_state.nudge_counters['weekly']:
+                                        st.session_state.nudge_counters['weekly'][current_week_str] = 0
+                                    st.session_state.nudge_counters['daily'][current_date_str] += 1
+                                    st.session_state.nudge_counters['weekly'][current_week_str] += 1
+                                    st.session_state[alert_nudge_key] = True
+                                    log_event('nudge_shown', event['name'], {'days_before': days_until, 'date': current_date_str})
+                                
+                                # Check for issues
+                                issues = None
+                                ran_check = False
+                                cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
+                                
+                                if cache_key in st.session_state.issues_cache:
+                                    issues = st.session_state.issues_cache[cache_key]
+                                    ran_check = True
+                                else:
+                                    with st.spinner("🔍 Checking for potential issues..."):
+                                        event_with_details = {**event, **details, 'location': location}
+                                        issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                        st.session_state.issues_cache[cache_key] = issues
+                                        ran_check = True
+                                
+                                if ran_check and issues:
+                                    for issue in issues:
+                                        severity_icon = {
+                                            'warning': '⚠️',
+                                            'info': 'ℹ️',
+                                            'critical': '🚨'
+                                        }.get(issue['severity'], 'ℹ️')
+                                        st.markdown(f"{severity_icon} {issue['message']}")
+                                        if issue.get('details'):
+                                            st.caption(f"ℹ️ {issue['details']}")
+                                elif ran_check and issues == []:
+                                    st.success("✅ No issues detected!")
+                                
+                                # Travel info
+                                if details.get('arrival_time'):
+                                    st.divider()
+                                    st.markdown("**Travel Information**")
+                                    st.info(f"💡 Suggested arrival time: {details['arrival_time']}")
+                                    if details.get('departure_time'):
+                                        st.info(f"🚗 Planned departure: {details['departure_time']}")
+                            else:
+                                st.warning("⚠️ No location available for this event")
+                            
+                            st.divider()
+                            
+                            if st.button(f"✓ Dismiss Alert", key=f"dismiss_{event_id}"):
+                                st.session_state.alerts_checked.add(event_id)
+                                st.rerun()
+                
+                # Summary of dismissed items
+                dismissed_count = len(st.session_state.alerts_checked) + len(st.session_state.details_ignored)
+                if dismissed_count > 0:
+                    st.divider()
+                    st.caption(f"✅ {dismissed_count} notification(s) dismissed")
+    
 
     # Nudge Stats tab (only visible in demo mode)
     if st.session_state.demo_mode and tab_nudges:
