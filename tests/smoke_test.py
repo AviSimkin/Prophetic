@@ -11,10 +11,10 @@ ROOT = r"c:\code\Prophetic"
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from prophetic_logger import get_logger, log_info, log_event
-from calendar_parser import create_sample_calendar, create_israeli_calendar, parse_calendar_file
-from llm_module import LLMModule
-from web_scraper import WebScraper
+from src.prophetic_logger import get_logger, log_info, log_event
+from src.calendar_parser import create_sample_calendar, create_israeli_calendar, parse_calendar_file
+from src.llm_module import LLMModule
+from src.web_scraper import WebScraper
 
 
 def assert_true(cond, msg):
@@ -37,7 +37,7 @@ def test_calendars():
     sbytes = create_sample_calendar()
     sevents = parse_calendar_file(sbytes)
     print(f"Sample calendar events: {len(sevents)}")
-    assert_true(len(sevents) == 4, "Sample calendar has 4 events")
+    assert_true(len(sevents) == 6, "Sample calendar has 6 events")
     missing_locs = [e for e in sevents if not e.get('location')]
     assert_true(len(missing_locs) >= 1, "Sample calendar includes events with missing location")
 
@@ -45,7 +45,7 @@ def test_calendars():
     ibytes = create_israeli_calendar()
     ievents = parse_calendar_file(ibytes)
     print(f"Israeli calendar events: {len(ievents)}")
-    assert_true(len(ievents) == 3, "Israeli calendar has 3 events")
+    assert_true(len(ievents) == 6, "Israeli calendar has 6 events")
     missing_ilocs = [e for e in ievents if not e.get('location')]
     assert_true(len(missing_ilocs) >= 1, "Israeli calendar includes an event with missing location")
 

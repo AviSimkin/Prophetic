@@ -9,11 +9,11 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
-from llm_module import LLMModule
-from web_scraper import WebScraper
-from timeline_simulator import TimelineSimulator
-from prophetic_logger import get_logger, log_event, log_info, log_error
+from src.calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
+from src.llm_module import LLMModule
+from src.web_scraper import WebScraper
+from src.timeline_simulator import TimelineSimulator
+from src.prophetic_logger import get_logger, log_event, log_info, log_error
 
 
 # Page configuration

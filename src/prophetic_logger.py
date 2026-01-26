@@ -1,6 +1,4 @@
-"""
-Prophetic logging: structured logs for LLM usage and app events
-"""
+"""Prophetic logging: structured logs for LLM usage and app events."""
 import json
 import logging
 from datetime import datetime
@@ -15,14 +13,12 @@ class PropheticLogger:
 
         import os as _os
         import uuid
-        
-        # Get current timestamp with milliseconds
+
         now = datetime.now()
-        timestamp_ms = now.strftime('%Y%m%d_%H%M%S_%f')[:-3]  # milliseconds (3 digits)
+        timestamp_ms = now.strftime('%Y%m%d_%H%M%S_%f')[:-3]
         auto_name = f"{timestamp_ms}-{_os.getpid()}-{uuid.uuid4().hex[:8]}"
         self.session_name = session_name or auto_name
 
-        # Organize logs by day folder
         day_folder = self.log_dir / now.strftime('%Y-%m-%d')
         day_folder.mkdir(exist_ok=True)
 
@@ -39,18 +35,15 @@ class PropheticLogger:
         file_handler = logging.FileHandler(self.general_log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
-        
-        # Fix Unicode for Hebrew text by using UTF-8 encoding for console
+
         import sys
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         try:
-            # Try to set UTF-8 encoding for the stream
             if hasattr(console_handler.stream, 'reconfigure'):
                 console_handler.stream.reconfigure(encoding='utf-8')
         except Exception:
-            # If reconfigure fails, just continue without it
             pass
 
         if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == str(self.general_log_file) for h in self.logger.handlers):
