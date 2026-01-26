@@ -1,132 +1,50 @@
 # Prophetic 🔮
 
-A Streamlit-based calendar event management application with predictive alerts and proactive issue detection, powered by Google Gemini Flash 2.5 and browseruse.
+Streamlit app for proactive event prep: import calendars, collect missing details, and flag travel or location hiccups before they happen.
 
 ## Features
 
-- 📅 **Calendar Import**: Upload .ics calendar files to import your events
-- 🇮🇱 **Israeli Calendar**: Pre-built sample calendar with typical Israeli events
-- 🎮 **Demo Mode**: Toggle between demo mode (simulated time) and production mode (real time)
-- ⏰ **Timeline Simulator**: Control time flow for demo purposes (when in demo mode)
-- 🤖 **Gemini-Powered Questions**: Uses Google Gemini Flash 2.5 to intelligently collect missing event details
-- 🌐 **Browseruse Integration**: Advanced web scraping with browseruse for real-time issue detection
-- 🚨 **Proactive Alerts**: Notifies you 7 days and 1 day before events
-- 💾 **Persistent State**: Maintains event details and alert status across sessions
+- 🎮 Demo vs production modes: simulated timeline controls for demos, real time for production.
+- 📅 Calendar intake: .ics upload plus sample and Israeli demo calendars (permission gate before upload).
+- 🧭 Address book: save common addresses and reuse them when filling event departure locations.
+- 📝 Detail collection: capture location, arrival/departure times, departure location, and transport method; optional Gemini prompts; validation for time inputs.
+- 🚨 Alerts: 7-day and 1-day alerts with cached issue checks (weather/traffic/location) via Gemini or mock data; mark reviewed.
+- 📊 Nudge Stats: counts how often the app prompts for details or alerts.
+- 🪵 Debug Logs: per-session activity log and LLM call history with token counts.
 
-## Installation
+## Setup
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/AviSimkin/Prophetic.git
 cd Prophetic
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+Optional `.env` (or sidebar input):
+- `GOOGLE_API_KEY=<your-key>`
+- `GEMINI_MODEL=gemini-2.5-flash` (default) 
 
-1. Start the Streamlit app:
+Without a key the app runs fully in mock mode; with a key it uses Gemini for prompts and issue checks (no browser automation required).
+
+## Run
+
 ```bash
 streamlit run app.py
 ```
+Opens at http://localhost:8501
 
-2. The app will open in your browser at `http://localhost:8501`
+## Workflow
 
-### Basic Workflow
+- Choose mode in the sidebar (demo default). Demo exposes timeline controls; production uses real time.
+- Grant calendar permission when prompted, then upload an .ics file or load the sample/Israeli calendars (demo mode only).
+- In **Setup**, add and save common addresses for quick selection.
+- In **Event Details**, complete missing fields for events within 7 days (location, arrival/departure times, departure location, transport method). Time inputs are validated; prompts use Gemini when a key is set.
+- In **Alerts**, review 7-day/1-day alerts, view issue checks, and mark items as reviewed.
+- In **Nudge Stats** (demo mode), see daily/weekly prompt counts.
+- In **Debug Logs** (demo mode), inspect activity events and LLM calls.
 
-1. **Select Mode**:
-   - Toggle **Demo Mode** ON for demonstrations with timeline control
-   - Toggle **Demo Mode** OFF for production use with real current date
+## Testing
 
-2. **Upload Calendar**: 
-   - Upload your .ics calendar file
-   - Or use the **Sample Calendar** button
-   - Or use the **Israeli Calendar** button for Hebrew events
-   
-3. **Timeline Control** (Demo Mode only): 
-   - Use the sidebar to simulate time passage
-   - Advance by 1 day or 7 days to trigger alerts
-   
-4. **Complete Event Details**:
-   - When you're 7 days before an event, the app will ask for missing details
-   - Provide location, arrival time, and departure time
-   
-5. **Review Alerts**:
-   - Check the Alerts tab for potential issues
-   - The app scans for weather, traffic, and location problems using browseruse
-   - Review and acknowledge alerts
-
-### Demo Mode vs Production Mode
-
-**Demo Mode (Default)**:
-- Timeline simulator with manual controls (+1 Day, +7 Days)
-- Perfect for classroom demonstrations and testing
-- Allows you to quickly jump to dates where events need attention
-
-**Production Mode**:
-- Uses real current date automatically
-- No timeline controls (always shows actual date)
-- Suitable for real-world usage
-
-## Components
-
-### Calendar Parser (`calendar_parser.py`)
-- Handles .ics file parsing and event extraction
-- Includes Israeli calendar generator with 3 typical events
-
-### LLM Module (`llm_module.py`)
-- Uses **Google Gemini Flash 2.5** (free tier) for contextual questions
-- Generates intelligent prompts to collect missing event information
-- Supports both API mode and mock mode
-
-### Web Scraper (`web_scraper.py`)
-- Powered by **browseruse** for advanced web crawling
-- Uses Gemini Flash 2.5 as the LLM backend
-- Checks for potential issues:
-  - Weather conditions
-  - Traffic and transit problems
-  - Location-specific alerts
-- Falls back to mock mode when no API key provided
-
-### Timeline Simulator (`timeline_simulator.py`)
-- Controls simulated time flow in demo mode
-- Automatically uses real time in production mode
-
-## Configuration
-
-### Google Gemini API Key (Optional)
-You can provide a Google Gemini API key in the sidebar for:
-- Enhanced LLM functionality for event questions
-- Real-time web scraping with browseruse
-- If not provided, the app runs in mock mode with simulated data
-
-To get a free Gemini API key:
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Enter it in the sidebar
-
-## Development
-
-The application is built with:
-- **Streamlit**: Web interface
-- **icalendar**: Calendar file parsing
-- **Google Gemini Flash 2.5**: LLM for questions and web analysis
-- **browseruse**: Advanced web crawling and scraping
-- **pandas**: Data handling
-
-## Future Enhancements
-
-- Integration with real weather APIs (OpenWeatherMap, Weather.gov)
-- Integration with traffic APIs (Google Maps, Waze)
-- Email/SMS notifications
-- Calendar export functionality
-- Multi-user support
-- Historical alert tracking
-- Machine learning for personalized recommendations
-
-## License
-
-MIT License
+```bash
+pytest tests/smoke_test.py
+```
