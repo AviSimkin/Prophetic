@@ -46,6 +46,9 @@ if 'event_details' not in st.session_state:
 if 'alerts_checked' not in st.session_state:
     st.session_state.alerts_checked = set()
 
+if 'alerts_generated' not in st.session_state:
+    st.session_state.alerts_generated = set()  # event_ids that have had issue checks run
+
 if 'details_ignored' not in st.session_state:
     st.session_state.details_ignored = set()  # event_ids that user chose to ignore detail requests
 
@@ -425,7 +428,8 @@ def main():
                     required_fields = ['location', 'arrival_time', 'departure_time', 'departure_location', 'transportation_method']
                     details_complete = all(details.get(field) for field in required_fields)
                     details_ignored = event_id in st.session_state.details_ignored
-                    alert_ignored = event_id in st.session_state.alerts_checked
+                    alert_generated = event_id in st.session_state.alerts_generated
+                    alert_dismissed = event_id in st.session_state.alerts_checked
                     
                     # Determine notification type
                     if not details_complete and not details_ignored:
@@ -433,13 +437,31 @@ def main():
                         notification_type = "detail_request"
                         icon = "📝"
                         title = f"{icon} Details Needed: {event['name']}"
-                    elif (details_complete or details_ignored) and not alert_ignored:
-                        # Show alert
+                    elif (details_complete or details_ignored) and alert_generated and not alert_dismissed:
+                        # Show alert (only after issue check has been run)
                         notification_type = "alert"
                         icon = "⚠️"
                         title = f"{icon} Alert: {event['name']}"
+                    elif (details_complete or details_ignored) and not alert_generated:
+                        # Details just saved/ignored, need to generate alert on next check
+                        notification_type = "pending_alert"
                     else:
-                        # Already reviewed, skip
+                        # Already dismissed, skip
+                        continue
+                    
+                    # For pending alerts, generate them now (run issue check)
+                    if notification_type == "pending_alert":
+                        location = details.get('location') or event.get('location', '')
+                        if location:
+                            cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
+                            if cache_key not in st.session_state.issues_cache:
+                                # Run the issue check in the background
+                                event_with_details = {**event, **details, 'location': location}
+                                issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                st.session_state.issues_cache[cache_key] = issues
+                            # Mark alert as generated
+                            st.session_state.alerts_generated.add(event_id)
+                        # Skip showing notification this cycle - it will appear on next rerun
                         continue
                     
                     # Record when detail request first shown
