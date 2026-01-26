@@ -415,7 +415,11 @@ def main():
                 for event in events_within_7days:
                     event_id = f"{event['name']}_{event['start']}"
                     days_until = st.session_state.timeline.days_until_event(event)
-                    details = st.session_state.event_details.get(event_id, {})
+                    
+                    # Ensure event_details entry exists
+                    if event_id not in st.session_state.event_details:
+                        st.session_state.event_details[event_id] = {}
+                    details = st.session_state.event_details[event_id]
                     
                     # Check if detail request should be auto-ignored (24 hours passed)
                     if event_id in st.session_state.detail_request_timestamps:
