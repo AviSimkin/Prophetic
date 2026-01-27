@@ -170,7 +170,7 @@ def create_israeli_calendar() -> bytes:
         },
         {
             'name': 'ארוחת צהריים - Haifa',
-            'days_offset': 5,
+            'days_offset': 4,
             'duration': 2,
             'description': 'Lunch meeting with potential investors',
             'location': 'Azrieli Mall Haifa'

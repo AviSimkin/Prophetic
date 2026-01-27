@@ -429,7 +429,7 @@ def main():
                             st.session_state.details_ignored.add(event_id)
                             log_event('details_auto_ignored', event['name'], {'reason': '24_hours_passed'})
                     
-                    required_fields = ['location', 'arrival_time', 'departure_time', 'departure_location', 'transportation_method']
+                    required_fields = ['location', 'arrival_time', 'event_end_time', 'departure_location', 'transportation_method']
                     details_complete = all(details.get(field) for field in required_fields)
                     details_ignored = event_id in st.session_state.details_ignored
                     alert_generated = event_id in st.session_state.alerts_generated
@@ -549,18 +549,18 @@ def main():
                                 except ValueError as e:
                                     st.error(str(e))
                             
-                            # Departure time
-                            current_departure_time = details.get('departure_time', '')
-                            departure_value = st.text_input(
-                                f"🚀 What time will you leave?",
-                                value=current_departure_time,
-                                placeholder="HH:MM (e.g., 08:45)",
-                                key=f"{event_id}_departure_time"
+                            # Event end time
+                            current_end_time = details.get('event_end_time', '')
+                            end_time_value = st.text_input(
+                                f"🏁 What time does the event end?",
+                                value=current_end_time,
+                                placeholder="HH:MM (e.g., 17:00)",
+                                key=f"{event_id}_event_end_time"
                             )
-                            if departure_value and departure_value != current_departure_time:
+                            if end_time_value and end_time_value != current_end_time:
                                 try:
-                                    parsed_value = st.session_state.llm_module.parse_response(departure_value, 'departure_time')
-                                    details['departure_time'] = parsed_value
+                                    parsed_value = st.session_state.llm_module.parse_response(end_time_value, 'event_end_time')
+                                    details['event_end_time'] = parsed_value
                                 except ValueError as e:
                                     st.error(str(e))
                             
@@ -653,8 +653,8 @@ def main():
                                     st.divider()
                                     st.markdown("**Your Schedule**")
                                     st.info(f"🕐 Arrival time: {details['arrival_time']}")
-                                    if details.get('departure_time'):
-                                        st.info(f"🚀 Departure time: {details['departure_time']}")
+                                    if details.get('event_end_time'):
+                                        st.info(f"🏁 Event ends: {details['event_end_time']}")
                             else:
                                 st.warning("⚠️ No location available for this event")
                             
