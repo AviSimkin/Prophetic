@@ -4,6 +4,7 @@ Alert Validation Agent: Validates issue findings and assigns priority.
 from typing import Optional, List
 import google.generativeai as genai
 from src.models import IssueFinding, AlertValidation
+from src.prophetic_logger import log_llm_call, log_error
 
 
 class AlertValidatorAgent:
@@ -162,8 +163,20 @@ Respond in JSON:
         
         try:
             response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Log the LLM call
+            log_llm_call(
+                model=self.model_name,
+                prompt=prompt,
+                response=response_text,
+                input_tokens=getattr(response, 'usage_metadata', {}).get('prompt_token_count'),
+                output_tokens=getattr(response, 'usage_metadata', {}).get('candidates_token_count'),
+                metadata={'agent': 'alert_validator', 'event_name': event.get('name', 'Unknown'), 'issue_count': len(issues)}
+            )
+            
             import json
-            text = response.text.strip()
+            text = response_text
             
             # Extract JSON
             if '```json' in text:
@@ -189,5 +202,6 @@ Respond in JSON:
             )
         
         except Exception as e:
+            log_error(f"Alert validator LLM error: {e}")
             # Fallback to heuristic on error
             return self._heuristic_validation(event, issues, event_importance)

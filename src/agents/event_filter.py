@@ -4,6 +4,7 @@ Event Filter Agent: Determines if an event should be ignored or processed.
 from typing import Optional
 import google.generativeai as genai
 from src.models import EventFilterDecision
+from src.prophetic_logger import log_llm_call, log_error
 
 
 class EventFilterAgent:
@@ -112,9 +113,21 @@ Respond in JSON format:
         
         try:
             response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Log the LLM call
+            log_llm_call(
+                model=self.model_name,
+                prompt=prompt,
+                response=response_text,
+                input_tokens=getattr(response, 'usage_metadata', {}).get('prompt_token_count'),
+                output_tokens=getattr(response, 'usage_metadata', {}).get('candidates_token_count'),
+                metadata={'agent': 'event_filter', 'event_name': event.get('name', 'Unknown')}
+            )
+            
             # Parse JSON from response
             import json
-            text = response.text.strip()
+            text = response_text
             
             # Extract JSON if wrapped in markdown
             if '```json' in text:
@@ -126,6 +139,7 @@ Respond in JSON format:
             return EventFilterDecision(**data)
         
         except Exception as e:
+            log_error(f"Event filter LLM error: {e}")
             # Fallback on error
             return EventFilterDecision(
                 should_ignore=False,
