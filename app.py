@@ -14,6 +14,7 @@ from src.llm_module import LLMModule
 from src.web_scraper import WebScraper
 from src.timeline_simulator import TimelineSimulator
 from src.prophetic_logger import get_logger, log_event, log_info, log_error
+from src.agents import EventFilterAgent, AlertValidatorAgent
 
 
 # Page configuration
@@ -70,6 +71,12 @@ if 'llm_module' not in st.session_state:
 if 'scraper' not in st.session_state:
     st.session_state.scraper = WebScraper(api_key=st.session_state.api_key)
 
+if 'event_filter_agent' not in st.session_state:
+    st.session_state.event_filter_agent = EventFilterAgent(api_key=st.session_state.api_key)
+
+if 'alert_validator_agent' not in st.session_state:
+    st.session_state.alert_validator_agent = AlertValidatorAgent(api_key=st.session_state.api_key)
+
 if 'demo_mode' not in st.session_state:
     st.session_state.demo_mode = True
 
@@ -90,22 +97,39 @@ if 'transportation_methods' not in st.session_state:
 
 
 def is_actionable_event(event: dict) -> bool:
-    """Heuristic: only prompt for details on events people likely attend."""
-    name = event.get('name', '').lower()
-    auto_keywords = [
-        'holiday', 'observance', 'observed', 'day off', 'reminder',
-        'birthday', 'anniversary', 'payday', 'bill', 'invoice'
-    ]
-    if any(keyword in name for keyword in auto_keywords):
-        return False
-    start = event.get('start')
-    end = event.get('end')
-    if isinstance(start, datetime) and isinstance(end, datetime):
-        duration = end - start
-        # Treat all-day style entries as non-actionable
-        if start.hour == 0 and start.minute == 0 and duration >= timedelta(hours=23):
+    """
+    Use EventFilterAgent to determine if event should be processed.
+    Falls back to heuristic if agent fails.
+    """
+    try:
+        decision = st.session_state.event_filter_agent.should_process_event(event)
+        
+        # Log the decision for transparency
+        if decision.should_ignore:
+            log_event('event_filtered', event.get('name', 'Unknown'), {
+                'reason': decision.reason,
+                'category': decision.event_category,
+                'confidence': decision.confidence
+            })
+        
+        return not decision.should_ignore
+    except Exception as e:
+        # Fallback to original heuristic on error
+        log_error(f"Event filter agent error: {e}")
+        name = event.get('name', '').lower()
+        auto_keywords = [
+            'holiday', 'observance', 'observed', 'day off', 'reminder',
+            'birthday', 'anniversary', 'payday', 'bill', 'invoice'
+        ]
+        if any(keyword in name for keyword in auto_keywords):
             return False
-    return True
+        start = event.get('start')
+        end = event.get('end')
+        if isinstance(start, datetime) and isinstance(end, datetime):
+            duration = end - start
+            if start.hour == 0 and start.minute == 0 and duration >= timedelta(hours=23):
+                return False
+        return True
 
 
 def main():
@@ -622,18 +646,74 @@ def main():
                                 
                                 # Check for issues
                                 issues = None
+                                validation_result = None
                                 ran_check = False
                                 cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
                                 
                                 if cache_key in st.session_state.issues_cache:
-                                    issues = st.session_state.issues_cache[cache_key]
+                                    cached_data = st.session_state.issues_cache[cache_key]
+                                    # Check if cache has validation (new format) or just issues (old format)
+                                    if isinstance(cached_data, dict) and 'validation' in cached_data:
+                                        issues = cached_data['issues']
+                                        validation_result = cached_data['validation']
+                                    else:
+                                        issues = cached_data
                                     ran_check = True
                                 else:
                                     with st.spinner("🔍 Checking for potential issues..."):
                                         event_with_details = {**event, **details, 'location': location}
-                                        issues = st.session_state.scraper.check_for_issues(event_with_details)
-                                        st.session_state.issues_cache[cache_key] = issues
+                                        raw_issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                        
+                                        # Validate issues with agent
+                                        if raw_issues:
+                                            try:
+                                                validation_result = st.session_state.alert_validator_agent.validate_alerts(
+                                                    event=event_with_details,
+                                                    issues=raw_issues,
+                                                    event_importance="medium"  # Could be user-defined later
+                                                )
+                                                # Use validated issues
+                                                issues = [
+                                                    {
+                                                        'message': i.message,
+                                                        'details': i.details,
+                                                        'severity': i.severity,
+                                                        'source': i.source
+                                                    }
+                                                    for i in validation_result.filtered_issues
+                                                ]
+                                                log_event('alerts_validated', event['name'], {
+                                                    'original_count': len(raw_issues),
+                                                    'filtered_count': len(issues),
+                                                    'priority': validation_result.priority,
+                                                    'removed': validation_result.removed_count
+                                                })
+                                            except Exception as e:
+                                                # Fallback to raw issues on validation error
+                                                log_error(f"Alert validation error: {e}")
+                                                issues = raw_issues
+                                        else:
+                                            issues = []
+                                        
+                                        # Cache both issues and validation
+                                        st.session_state.issues_cache[cache_key] = {
+                                            'issues': issues,
+                                            'validation': validation_result
+                                        }
                                         ran_check = True
+                                
+                                # Display validation priority if available
+                                if validation_result:
+                                    priority_colors = {
+                                        'low': '🟢',
+                                        'medium': '🟡', 
+                                        'high': '🔴'
+                                    }
+                                    priority_icon = priority_colors.get(validation_result.priority, '⚪')
+                                    st.caption(f"{priority_icon} Priority: {validation_result.priority.upper()}")
+                                    if validation_result.validation_notes:
+                                        with st.expander("ℹ️ Validation Details", expanded=False):
+                                            st.text(validation_result.validation_notes)
                                 
                                 if ran_check and issues:
                                     for issue in issues:
