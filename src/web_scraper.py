@@ -24,7 +24,7 @@ class WebScraper:
                 import google.generativeai as genai
 
                 genai.configure(api_key=self.api_key)
-                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
                 self.llm = genai.GenerativeModel(self.model_name)
                 log_info(f"WebScraper initialized with Gemini API (model: {self.model_name})")
             except Exception as e:

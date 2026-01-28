@@ -13,7 +13,7 @@ class EventFilterAgent:
     or should be ignored (holiday, generic reminder, task without location/time).
     """
     
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash-lite"):
         self.api_key = api_key
         self.model_name = model_name
         

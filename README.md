@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 Optional `.env` (or sidebar input):
 - `GOOGLE_API_KEY=<your-key>`
-- `GEMINI_MODEL=gemini-2.5-flash` (default) 
+- `GEMINI_MODEL=gemini-2.5-flash-lite` (default) 
 
 Without a key the app runs fully in mock mode; with a key it uses Gemini for prompts and issue checks (no browser automation required).
 
