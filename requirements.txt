@@ -5,6 +5,8 @@ pytz
 requests
 beautifulsoup4
 google-generativeai
+pydantic>=2.0.0
 # browseruse==0.1.8  # Optional, not on PyPI - using mock mode
 pandas
 python-dotenv
+pytest
