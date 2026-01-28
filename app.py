@@ -712,8 +712,7 @@ def main():
                                     priority_icon = priority_colors.get(validation_result.priority, '⚪')
                                     st.caption(f"{priority_icon} Priority: {validation_result.priority.upper()}")
                                     if validation_result.validation_notes:
-                                        with st.expander("ℹ️ Validation Details", expanded=False):
-                                            st.text(validation_result.validation_notes)
+                                        st.caption(f"ℹ️ {validation_result.validation_notes}")
                                 
                                 if ran_check and issues:
                                     for issue in issues:
