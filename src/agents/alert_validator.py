@@ -134,6 +134,16 @@ class AlertValidatorAgent:
 1. Check if they are relevant and accurate (no hallucinations or obvious mistakes)
 2. Assign an overall priority: low, medium, or high
 
+Few-shot examples:
+1. Event: "Doctor appointment Feb 1, Tel Aviv", Alert: "⚠️ Heavy rain expected" → KEEP (relevant to travel)
+   Priority: HIGH (health appointment + weather risk)
+2. Event: "Office meeting Feb 2, Tel Aviv", Alert: "🚨 Major road closure on Highway 1" → KEEP (travel blocker)
+   Priority: HIGH (important event + critical issue)
+3. Event: "Coffee meeting Feb 3, Tel Aviv", Alert: "ℹ️ Slight chance of drizzle" → REJECT (too minor for casual meeting)
+4. Event: "Sammy Ofer game Jan 31 15:00", Alert: "🚨 Stadium at max capacity, traffic expected" → KEEP
+   Priority: HIGH (major event + infrastructure issue)
+5. Event: "Gym session", Alert: "⚠️ Gym might be busy" → REJECT (not actionable, generic)
+
 Event:
 - Name: {event.get('name', 'N/A')}
 - Date: {event.get('start', 'N/A')}
