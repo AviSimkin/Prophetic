@@ -18,6 +18,7 @@ class WebScraper:
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.use_mock = self.api_key is None
         self._cache: Dict[str, List[Dict[str, str]]] = {}
+        self._validation_feedback: List[str] = []  # Store validator feedback to improve future prompts
 
         if not self.use_mock:
             try:
@@ -33,6 +34,14 @@ class WebScraper:
         else:
             log_info("WebScraper initialized in mock mode (no API key)")
 
+    def add_validation_feedback(self, feedback: str):
+        """Store validation feedback to improve future prompts."""
+        if feedback and feedback.strip():
+            self._validation_feedback.append(feedback)
+            # Keep only recent feedback (last 5)
+            if len(self._validation_feedback) > 5:
+                self._validation_feedback = self._validation_feedback[-5:]
+
     def check_for_issues(self, event: Dict) -> List[Dict[str, str]]:
         log_event('issue_check', event.get('name', 'Unknown Event'), {
             'location': event.get('location', 'N/A'),
@@ -45,7 +54,7 @@ class WebScraper:
         date_key = start_dt.strftime('%Y-%m-%d') if start_dt else 'N/A'
         transport = (event.get('transport_mode') or 'na').lower()
         arrival = event.get('arrival_time') or 'na'
-        departure = event.get('departure_time') or 'na'
+        departure = event.get('event_end_time') or event.get('departure_time') or 'na'
         cache_key = f"{location}|{date_key}|{transport}|{arrival}|{departure}"
 
         if cache_key in self._cache:
@@ -78,7 +87,7 @@ class WebScraper:
         try:
             transport = event.get('transport_mode', 'unknown')
             arrival = event.get('arrival_time', '')
-            departure = event.get('departure_time', '')
+            departure = event.get('event_end_time', '') or event.get('departure_time', '')
             event_time = event_date.strftime('%H:%M') if event_date.hour or event_date.minute else 'all day'
 
             # Build context about known local events
@@ -86,12 +95,18 @@ class WebScraper:
             if event_date.date() == datetime(2026, 1, 31).date():
                 local_events_context = "\n\n**IMPORTANT CONTEXT FOR JAN 31, 2026:**\n- Soccer game at Sammy Ofer Stadium in Haifa at 15:00 (3:00 PM)\n- This is a major local sporting event that will cause significant traffic and parking issues in Haifa area, especially near malls and commercial centers"
 
+            # Add validation feedback to guide LLM
+            feedback_context = ""
+            if self._validation_feedback:
+                recent_feedback = "\n".join(f"- {fb}" for fb in self._validation_feedback[-3:])  # Last 3 feedback items
+                feedback_context = f"\n\n**VALIDATION FEEDBACK (learn from past mistakes):**\n{recent_feedback}"
+
             search_query = f"""Check conditions for {location} on {event_date.strftime('%b %d, %Y')} around {event_time}.
 
 Traveler plan:
 - Transport: {transport}
 - Arrival time: {arrival or 'N/A'}
-- Departure time: {departure or 'N/A'}{local_events_context}
+- Departure time: {departure or 'N/A'}{local_events_context}{feedback_context}
 
 ONLY report ACTIONABLE concerns relevant to the plan:
 - If transport is car: major traffic delays, closures, parking disruptions

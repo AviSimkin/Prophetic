@@ -16,7 +16,7 @@ test_event = {
     'location': 'German Colony, Haifa',
     'transport_mode': 'Car',
     'arrival_time': '12:00',
-    'departure_time': '11:30'
+    'event_end_time': '11:30'
 }
 
 print("Testing scraper for Jan 31, 2026 event in Haifa...")

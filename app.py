@@ -132,6 +132,25 @@ def is_actionable_event(event: dict) -> bool:
         return True
 
 
+def _get_effective_detail(event: dict, details: dict, field: str) -> str:
+    """Return effective detail value, using event defaults if available."""
+    if details.get(field):
+        return details.get(field)
+
+    if field == 'location':
+        return event.get('location', '') or ''
+
+    if field == 'arrival_time':
+        start_dt = event.get('start')
+        return start_dt.strftime('%H:%M') if start_dt else ''
+
+    if field == 'event_end_time':
+        end_dt = event.get('end')
+        return end_dt.strftime('%H:%M') if end_dt else ''
+
+    return ''
+
+
 def main():
     """Main application"""
     st.title("🔮 Prophetic Calendar")
@@ -406,8 +425,8 @@ def main():
                                     st.write(f"**📍 Location:** {details['location']}")
                                 if details.get('arrival_time'):
                                     st.write(f"**🕐 Arrival Time:** {details['arrival_time']}")
-                                if details.get('departure_time'):
-                                    st.write(f"**🚗 Departure Time:** {details['departure_time']}")
+                                if details.get('event_end_time'):
+                                    st.write(f"**🏁 Event ends:** {details['event_end_time']}")
             else:
                 st.info("No upcoming events in the next 60 days from current simulated date.")
     
@@ -445,6 +464,23 @@ def main():
                         st.session_state.event_details[event_id] = {}
                     details = st.session_state.event_details[event_id]
                     
+                    # Pre-populate with event defaults if not already set
+                    if not details.get('location') and event.get('location'):
+                        details['location'] = event.get('location')
+                    if not details.get('arrival_time') and event.get('start'):
+                        details['arrival_time'] = event.get('start').strftime('%H:%M')
+                    if not details.get('event_end_time') and event.get('end'):
+                        details['event_end_time'] = event.get('end').strftime('%H:%M')
+                    # Default transportation method to first option if not set
+                    if not details.get('transportation_method') and st.session_state.transportation_methods:
+                        details['transportation_method'] = st.session_state.transportation_methods[0]
+                    # Default departure location to first saved address if not set
+                    if not details.get('departure_location'):
+                        for addr_info in st.session_state.user_addresses:
+                            if addr_info.get('saved', False) and addr_info.get('address'):
+                                details['departure_location'] = addr_info['address']
+                                break
+                    
                     # Check if detail request should be auto-ignored (24 hours passed)
                     if event_id in st.session_state.detail_request_timestamps:
                         request_time = st.session_state.detail_request_timestamps[event_id]
@@ -454,7 +490,7 @@ def main():
                             log_event('details_auto_ignored', event['name'], {'reason': '24_hours_passed'})
                     
                     required_fields = ['location', 'arrival_time', 'event_end_time', 'departure_location', 'transportation_method']
-                    details_complete = all(details.get(field) for field in required_fields)
+                    details_complete = all(_get_effective_detail(event, details, field) for field in required_fields)
                     details_ignored = event_id in st.session_state.details_ignored
                     alert_generated = event_id in st.session_state.alerts_generated
                     alert_dismissed = event_id in st.session_state.alerts_checked
@@ -492,7 +528,7 @@ def main():
                             st.markdown("### Please provide event details")
                             
                             # Nudge counter
-                            missing_fields = [f for f in required_fields if not details.get(f)]
+                            missing_fields = [f for f in required_fields if not _get_effective_detail(event, details, f)]
                             current_date_str = current_date.strftime('%Y-%m-%d')
                             current_week_str = current_date.strftime('%Y-W%W')
                             detail_nudge_key = f"{event_id}_details_prompted"
@@ -555,7 +591,7 @@ def main():
                                 placeholder="Enter the event address or venue name",
                                 key=f"{event_id}_location"
                             )
-                            if location_value and location_value != current_location:
+                            if location_value:
                                 details['location'] = location_value
                             
                             # Arrival time
@@ -566,7 +602,7 @@ def main():
                                 placeholder="HH:MM (e.g., 09:30)",
                                 key=f"{event_id}_arrival_time"
                             )
-                            if arrival_value and arrival_value != current_arrival:
+                            if arrival_value:
                                 try:
                                     parsed_value = st.session_state.llm_module.parse_response(arrival_value, 'arrival_time')
                                     details['arrival_time'] = parsed_value
@@ -581,7 +617,7 @@ def main():
                                 placeholder="HH:MM (e.g., 17:00)",
                                 key=f"{event_id}_event_end_time"
                             )
-                            if end_time_value and end_time_value != current_end_time:
+                            if end_time_value:
                                 try:
                                     parsed_value = st.session_state.llm_module.parse_response(end_time_value, 'event_end_time')
                                     details['event_end_time'] = parsed_value
@@ -607,12 +643,12 @@ def main():
                             col1, col2 = st.columns(2)
                             with col1:
                                 if st.button(f"💾 Save Details", key=f"save_{event_id}"):
-                                    if all(details.get(field) for field in required_fields):
+                                    if all(_get_effective_detail(event, details, field) for field in required_fields):
                                         log_event('event_details_saved', event['name'], details)
                                         st.success("✅ Details saved!")
                                         st.rerun()
                                     else:
-                                        missing = [f for f in required_fields if not details.get(f)]
+                                        missing = [f for f in required_fields if not _get_effective_detail(event, details, f)]
                                         st.warning(f"⚠️ Please fill in: {', '.join(missing)}")
                             
                             with col2:
@@ -664,36 +700,38 @@ def main():
                                         event_with_details = {**event, **details, 'location': location}
                                         raw_issues = st.session_state.scraper.check_for_issues(event_with_details)
                                         
-                                        # Validate issues with agent
-                                        if raw_issues:
-                                            try:
-                                                validation_result = st.session_state.alert_validator_agent.validate_alerts(
-                                                    event=event_with_details,
-                                                    issues=raw_issues,
-                                                    event_importance="medium"  # Could be user-defined later
-                                                )
-                                                # Use validated issues
-                                                issues = [
-                                                    {
-                                                        'message': i.message,
-                                                        'details': i.details,
-                                                        'severity': i.severity,
-                                                        'source': i.source
-                                                    }
-                                                    for i in validation_result.filtered_issues
-                                                ]
-                                                log_event('alerts_validated', event['name'], {
-                                                    'original_count': len(raw_issues),
-                                                    'filtered_count': len(issues),
-                                                    'priority': validation_result.priority,
-                                                    'removed': validation_result.removed_count
-                                                })
-                                            except Exception as e:
-                                                # Fallback to raw issues on validation error
-                                                log_error(f"Alert validation error: {e}")
-                                                issues = raw_issues
-                                        else:
-                                            issues = []
+                                        # Always validate - even when no issues found, validator provides feedback
+                                        log_info(f"Running validation for {event['name']} with {len(raw_issues)} raw issues")
+                                        try:
+                                            validation_result = st.session_state.alert_validator_agent.validate_alerts(
+                                                event=event_with_details,
+                                                issues=raw_issues,
+                                                event_importance="medium"  # Could be user-defined later
+                                            )
+                                            # Use validated issues
+                                            issues = [
+                                                {
+                                                    'message': i.message,
+                                                    'details': i.details,
+                                                    'severity': i.severity,
+                                                    'source': i.source
+                                                }
+                                                for i in validation_result.filtered_issues
+                                            ]
+                                            log_event('alerts_validated', event['name'], {
+                                                'original_count': len(raw_issues),
+                                                'filtered_count': len(issues),
+                                                'priority': validation_result.priority,
+                                                'removed': validation_result.removed_count
+                                            })
+                                            
+                                            # Pass validation feedback to scraper for future improvements
+                                            if validation_result.llm_guidance:
+                                                st.session_state.scraper.add_validation_feedback(validation_result.llm_guidance)
+                                        except Exception as e:
+                                            # Fallback to raw issues on validation error
+                                            log_error(f"Alert validation error: {e}")
+                                            issues = raw_issues if raw_issues else []
                                         
                                         # Cache both issues and validation
                                         st.session_state.issues_cache[cache_key] = {
@@ -713,6 +751,8 @@ def main():
                                     st.caption(f"{priority_icon} Priority: {validation_result.priority.upper()}")
                                     if validation_result.validation_notes:
                                         st.caption(f"ℹ️ {validation_result.validation_notes}")
+                                        if validation_result.llm_guidance:
+                                            st.caption(f"🤖 {validation_result.llm_guidance}")
                                 
                                 if ran_check and issues:
                                     for issue in issues:

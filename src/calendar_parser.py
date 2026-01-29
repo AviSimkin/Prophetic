@@ -150,6 +150,12 @@ def create_israeli_calendar() -> bytes:
             'location': 'German Colony, Haifa'
         },
         {
+            'name': 'Homework submission - Computer Science 101',
+            'days_offset': 5,
+            'duration': 0,
+            'description': 'Submit final project code via online portal'
+        },
+        {
             'name': 'כנס היי-טק - Herzliya',
             'days_offset': 9,
             'duration': 6,

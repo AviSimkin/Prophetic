@@ -4,7 +4,7 @@ Alert Validation Agent: Validates issue findings and assigns priority.
 from typing import Optional, List
 import google.generativeai as genai
 from src.models import IssueFinding, AlertValidation
-from src.prophetic_logger import log_llm_call, log_error
+from src.prophetic_logger import log_llm_call, log_error, log_info
 
 
 class AlertValidatorAgent:
@@ -42,12 +42,19 @@ class AlertValidatorAgent:
             AlertValidation with filtered issues and priority assignment.
         """
         if not issues:
+            log_info(f"Alert validator: no issues for {event.get('name', 'Unknown')} (skipping LLM)")
+            # Even with no issues, provide contextual validation notes
+            event_date = event.get('start', '')
+            event_location = event.get('location', 'unknown')
+            validation_notes = f"No issues detected for {event.get('name', 'event')} on {event_date}. Location: {event_location} appears clear."
+            
             return AlertValidation(
                 is_valid=True,
-                validation_notes="No issues to validate",
+                validation_notes=validation_notes,
                 priority="low",
                 filtered_issues=[],
-                removed_count=0
+                removed_count=0,
+                llm_guidance="No issues were found. Maintain current standards for issue detection."
             )
         
         # Convert to Pydantic models
@@ -77,9 +84,11 @@ class AlertValidatorAgent:
         
         # If no LLM, use heuristic validation
         if not self.model:
+            log_info(f"Alert validator: using heuristic for {event.get('name', 'Unknown')} (no LLM configured)")
             return self._heuristic_validation(event, issue_findings, event_importance)
         
         # Use LLM for deep validation
+        log_info(f"Alert validator: invoking LLM for {event.get('name', 'Unknown')} with {len(issue_findings)} issues")
         return self._llm_validation(event, issue_findings, event_importance)
     
     def _heuristic_validation(
@@ -114,7 +123,8 @@ class AlertValidatorAgent:
             validation_notes=f"Heuristic: {len(valid_issues)} valid issues, max severity: {max_severity}",
             priority=priority,
             filtered_issues=valid_issues,
-            removed_count=removed
+            removed_count=removed,
+            llm_guidance=None  # Heuristic mode doesn't provide LLM guidance
         )
     
     def _llm_validation(
@@ -135,14 +145,17 @@ class AlertValidatorAgent:
 2. Assign an overall priority: low, medium, or high
 
 Few-shot examples:
-1. Event: "Doctor appointment Feb 1, Tel Aviv", Alert: "⚠️ Heavy rain expected" → KEEP (relevant to travel)
-   Priority: HIGH (health appointment + weather risk)
-2. Event: "Office meeting Feb 2, Tel Aviv", Alert: "🚨 Major road closure on Highway 1" → KEEP (travel blocker)
-   Priority: HIGH (important event + critical issue)
-3. Event: "Coffee meeting Feb 3, Tel Aviv", Alert: "ℹ️ Slight chance of drizzle" → REJECT (too minor for casual meeting)
-4. Event: "Sammy Ofer game Jan 31 15:00", Alert: "🚨 Stadium at max capacity, traffic expected" → KEEP
-   Priority: HIGH (major event + infrastructure issue)
-5. Event: "Gym session", Alert: "⚠️ Gym might be busy" → REJECT (not actionable, generic)
+1. Event: "Doctor appointment", Date: "2026-02-15 09:00", Location: "Medical Center", Importance: high
+   Alert: "Heavy rain expected" (severity: warning)
+   → {{"is_valid": true, "priority": "high", "issues_to_keep": ["Heavy rain expected"], "validation_notes": "Weather risk relevant for health appointment", "llm_guidance": "Good - weather impacts medical travel"}}
+
+2. Event: "Coffee chat", Date: "2026-02-20 15:00", Location: "Cafe Downtown", Importance: low
+   Alert: "Light drizzle possible" (severity: info)
+   → {{"is_valid": false, "priority": "low", "issues_to_keep": [], "removed_count": 1, "validation_notes": "Minor weather for casual event", "llm_guidance": "Don't report routine weather for informal meetings"}}
+
+3. Event: "Business meeting", Date: "2026-03-01 10:00", Location: "Office Park", Importance: high
+   Alert: "Major soccer game at nearby stadium causing traffic delays" (severity: critical)
+   → {{"is_valid": true, "priority": "high", "issues_to_keep": ["Major soccer game at nearby stadium causing traffic delays"], "validation_notes": "Verified event-specific traffic impact", "llm_guidance": "Good - specific local event with travel impact"}}
 
 Event:
 - Name: {event.get('name', 'N/A')}
@@ -168,7 +181,8 @@ Respond in JSON:
     "validation_notes": "brief explanation of what you kept/removed",
     "priority": "low|medium|high",
     "issues_to_keep": ["message text of valid alerts"],
-    "removed_count": 0
+    "removed_count": 0,
+    "llm_guidance": "specific feedback for the hiccup-checking LLM to avoid similar mistakes (e.g., 'No soccer game at Sammy Ofer on this date - avoid hallucinating sports events', or 'Weather is normal - don't report routine conditions')"
 }}"""
         
         try:
@@ -208,7 +222,8 @@ Respond in JSON:
                 validation_notes=data.get('validation_notes', 'LLM validation complete'),
                 priority=data.get('priority', 'medium'),
                 filtered_issues=filtered_issues,
-                removed_count=data.get('removed_count', len(issues) - len(filtered_issues))
+                removed_count=data.get('removed_count', len(issues) - len(filtered_issues)),
+                llm_guidance=data.get('llm_guidance')
             )
         
         except Exception as e:

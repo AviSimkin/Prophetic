@@ -39,15 +39,15 @@ class LLMModule:
         if not event.get('arrival_time'):
             questions['arrival_time'] = f"What time do you need to arrive for '{event['name']}'?"
 
-        if not event.get('departure_time'):
-            questions['departure_time'] = f"What time do you plan to leave for '{event['name']}'?"
+        if not event.get('event_end_time'):
+            questions['event_end_time'] = f"What time does '{event['name']}' end?"
 
         return questions
 
     def parse_response(self, response: str, question_type: str) -> str:
         response = response.strip()
 
-        if question_type in ['arrival_time', 'departure_time']:
+        if question_type in ['arrival_time', 'event_end_time']:
             time_pattern = r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$'
             if not re.match(time_pattern, response):
                 if ':' not in response and len(response) in [3, 4]:

@@ -30,6 +30,7 @@ class AlertValidation(BaseModel):
     priority: Literal['low', 'medium', 'high'] = Field(..., description="Overall alert priority")
     filtered_issues: list[IssueFinding] = Field(default_factory=list, description="Validated/filtered issues")
     removed_count: int = Field(0, description="Number of issues removed as invalid")
+    llm_guidance: Optional[str] = Field(None, description="Feedback for future hiccup LLM calls to avoid similar mistakes")
 
 
 class EventInput(BaseModel):
