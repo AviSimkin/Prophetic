@@ -47,7 +47,7 @@ def test_calendars():
     ibytes = create_israeli_calendar()
     ievents = parse_calendar_file(ibytes)
     print(f"Israeli calendar events: {len(ievents)}")
-    assert_true(len(ievents) == 6, "Israeli calendar has 6 events")
+    assert_true(len(ievents) == 7, "Israeli calendar has 7 events (including homework task)")
     missing_ilocs = [e for e in ievents if not e.get('location')]
     assert_true(len(missing_ilocs) >= 1, "Israeli calendar includes an event with missing location")
 

@@ -28,7 +28,10 @@ class AlertValidatorAgent:
         self, 
         event: dict, 
         issues: List[dict],
-        event_importance: str = "medium"
+        event_importance: str = "medium",
+        nudges_today: int = 0,
+        nudges_this_week: int = 0,
+        days_until_event: int = 7
     ) -> AlertValidation:
         """
         Validate a list of issue findings and assign overall priority.
@@ -37,9 +40,14 @@ class AlertValidatorAgent:
             event: Event dict with name, location, date, etc.
             issues: List of issue dicts from web scraper (message, severity, details)
             event_importance: User's importance rating (if available)
+            nudges_today: Number of alerts already shown today
+            nudges_this_week: Number of alerts already shown this week
+            days_until_event: Days until event (for urgency calculation)
         
         Returns:
             AlertValidation with filtered issues and priority assignment.
+            If suppressed due to nudge limits, returns empty filtered_issues.
+            Events closer in time are less likely to be suppressed.
         """
         if not issues:
             log_info(f"Alert validator: no issues for {event.get('name', 'Unknown')} (skipping LLM)")
@@ -48,6 +56,7 @@ class AlertValidatorAgent:
             event_location = event.get('location', 'unknown')
             validation_notes = f"No issues detected for {event.get('name', 'event')} on {event_date}. Location: {event_location} appears clear."
             
+            log_info(f"Alert validator: suppressing notification (no issues found)")
             return AlertValidation(
                 is_valid=True,
                 validation_notes=validation_notes,
@@ -85,11 +94,27 @@ class AlertValidatorAgent:
         # If no LLM, use heuristic validation
         if not self.model:
             log_info(f"Alert validator: using heuristic for {event.get('name', 'Unknown')} (no LLM configured)")
-            return self._heuristic_validation(event, issue_findings, event_importance)
+            result = self._heuristic_validation(event, issue_findings, event_importance)
+        else:
+            # Use LLM for deep validation
+            log_info(f"Alert validator: invoking LLM for {event.get('name', 'Unknown')} with {len(issue_findings)} issues")
+            result = self._llm_validation(event, issue_findings, event_importance)
         
-        # Use LLM for deep validation
-        log_info(f"Alert validator: invoking LLM for {event.get('name', 'Unknown')} with {len(issue_findings)} issues")
-        return self._llm_validation(event, issue_findings, event_importance)
+        # Apply nudge suppression logic with urgency scaling (Goal Gradient Effect)
+        # Closer events are less likely to be suppressed (urgency increases with proximity)
+        # Suppress if: low priority AND high nudge count AND event is not imminent
+        
+        # Calculate urgency threshold: events within 2 days are "urgent" and harder to suppress
+        is_urgent = days_until_event <= 2
+        suppression_threshold = 5 if is_urgent else 3  # Higher threshold for urgent events
+        
+        if result.priority == "low" and nudges_today >= suppression_threshold:
+            log_info(f"Alert validator: suppressing low-priority alert (already {nudges_today} alerts today, {days_until_event} days until event)")
+            result.filtered_issues = []
+            result.removed_count = len(issue_findings)
+            result.llm_guidance = f"Alert suppressed due to notification fatigue ({nudges_today} alerts today, event in {days_until_event} days)"
+        
+        return result
     
     def _heuristic_validation(
         self, 

@@ -11,10 +11,9 @@ from dotenv import load_dotenv
 
 from src.calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
 from src.llm_module import LLMModule
-from src.web_scraper import WebScraper
 from src.timeline_simulator import TimelineSimulator
 from src.prophetic_logger import get_logger, log_event, log_info, log_error
-from src.agents import EventFilterAgent, AlertValidatorAgent
+from src.agents import EventFilterAgent, AlertValidatorAgent, HiccupAgent
 
 
 # Page configuration
@@ -68,14 +67,17 @@ if 'api_key' not in st.session_state:
 if 'llm_module' not in st.session_state:
     st.session_state.llm_module = LLMModule(api_key=st.session_state.api_key)
 
-if 'scraper' not in st.session_state:
-    st.session_state.scraper = WebScraper(api_key=st.session_state.api_key)
+if 'hiccup_agent' not in st.session_state:
+    st.session_state.hiccup_agent = HiccupAgent(api_key=st.session_state.api_key)
 
 if 'event_filter_agent' not in st.session_state:
     st.session_state.event_filter_agent = EventFilterAgent(api_key=st.session_state.api_key)
 
 if 'alert_validator_agent' not in st.session_state:
     st.session_state.alert_validator_agent = AlertValidatorAgent(api_key=st.session_state.api_key)
+
+if 'nudge_history' not in st.session_state:
+    st.session_state.nudge_history = []  # List of (event_id, timestamp) tuples
 
 if 'demo_mode' not in st.session_state:
     st.session_state.demo_mode = True
@@ -130,6 +132,28 @@ def is_actionable_event(event: dict) -> bool:
             if start.hour == 0 and start.minute == 0 and duration >= timedelta(hours=23):
                 return False
         return True
+
+
+def _count_nudges_today() -> int:
+    """Count how many nudges/alerts were shown today."""
+    today = datetime.now().date()
+    count = sum(1 for event_id, ts in st.session_state.nudge_history 
+                if datetime.fromtimestamp(ts).date() == today)
+    return count
+
+
+def _count_nudges_this_week() -> int:
+    """Count how many nudges/alerts were shown this week."""
+    today = datetime.now()
+    week_start = today - timedelta(days=today.weekday())
+    count = sum(1 for event_id, ts in st.session_state.nudge_history 
+                if datetime.fromtimestamp(ts) >= week_start)
+    return count
+
+
+def _record_nudge(event_id: str) -> None:
+    """Record that a nudge/alert was shown for an event."""
+    st.session_state.nudge_history.append((event_id, datetime.now().timestamp()))
 
 
 def _get_effective_detail(event: dict, details: dict, field: str) -> str:
@@ -237,29 +261,63 @@ def main():
             st.divider()
         
             # API Key configuration
-            st.header("🔑 Gemini API Key (Optional)")
+            st.header("🔑 API Keys (Optional)")
 
+        # Google Gemini API
         env_key_present = bool(ENV_API_KEY)
         if env_key_present:
-            st.caption("Using key from .env unless you override below.")
+            st.caption("Using keys from .env unless you override below.")
 
         api_key = st.text_input(
-            "API Key",
+            "Google Gemini API Key",
             type="password",
             placeholder="Using .env value" if env_key_present else "Enter Google Gemini API key",
             help="Provide a Gemini API key for LLM features. Leave empty to use mock mode."
+        )
+        
+        # SerpAPI Key
+        env_serpapi_key = os.getenv("SERPAPI_KEY")
+        serpapi_key = st.text_input(
+            "SerpAPI Key",
+            type="password",
+            placeholder="Using .env value" if env_serpapi_key else "Enter SerpAPI key",
+            help="Required for Google Maps directions and traffic analysis"
+        )
+        
+        # Tavily API Key
+        env_tavily_key = os.getenv("TAVILY_API_KEY")
+        tavily_key = st.text_input(
+            "Tavily API Key",
+            type="password",
+            placeholder="Using .env value" if env_tavily_key else "Enter Tavily API key",
+            help="Required for web search (weather, events, closures)"
         )
 
         # Apply overrides only when user provides a non-empty input
         if api_key:
             st.session_state.api_key = api_key
             st.session_state.llm_module = LLMModule(api_key=api_key)
-            st.session_state.scraper = WebScraper(api_key=api_key)
+            st.session_state.hiccup_agent = HiccupAgent(api_key=api_key)
+            st.session_state.event_filter_agent = EventFilterAgent(api_key=api_key)
+            st.session_state.alert_validator_agent = AlertValidatorAgent(api_key=api_key)
         elif st.session_state.api_key != ENV_API_KEY:
             # Reset to env key if user cleared the field
             st.session_state.api_key = ENV_API_KEY
             st.session_state.llm_module = LLMModule(api_key=ENV_API_KEY)
-            st.session_state.scraper = WebScraper(api_key=ENV_API_KEY)
+            st.session_state.hiccup_agent = HiccupAgent(api_key=ENV_API_KEY)
+            st.session_state.event_filter_agent = EventFilterAgent(api_key=ENV_API_KEY)
+            st.session_state.alert_validator_agent = AlertValidatorAgent(api_key=ENV_API_KEY)
+        
+        # Store SerpAPI and Tavily keys in session state
+        if serpapi_key:
+            st.session_state.serpapi_key = serpapi_key
+        elif 'serpapi_key' not in st.session_state:
+            st.session_state.serpapi_key = env_serpapi_key
+            
+        if tavily_key:
+            st.session_state.tavily_key = tavily_key
+        elif 'tavily_key' not in st.session_state:
+            st.session_state.tavily_key = env_tavily_key
         
     # Main content
     tabs_list = ["🏠 Setup", "📅 Calendar Upload", "� Notifications"]
@@ -462,24 +520,24 @@ def main():
                     # Ensure event_details entry exists
                     if event_id not in st.session_state.event_details:
                         st.session_state.event_details[event_id] = {}
-                    details = st.session_state.event_details[event_id]
-                    
-                    # Pre-populate with event defaults if not already set
-                    if not details.get('location') and event.get('location'):
-                        details['location'] = event.get('location')
-                    if not details.get('arrival_time') and event.get('start'):
-                        details['arrival_time'] = event.get('start').strftime('%H:%M')
-                    if not details.get('event_end_time') and event.get('end'):
-                        details['event_end_time'] = event.get('end').strftime('%H:%M')
-                    # Default transportation method to first option if not set
-                    if not details.get('transportation_method') and st.session_state.transportation_methods:
-                        details['transportation_method'] = st.session_state.transportation_methods[0]
-                    # Default departure location to first saved address if not set
-                    if not details.get('departure_location'):
+                        
+                        # Pre-populate with event defaults ONLY on first creation
+                        if event.get('location'):
+                            st.session_state.event_details[event_id]['location'] = event.get('location')
+                        if event.get('start'):
+                            st.session_state.event_details[event_id]['arrival_time'] = event.get('start').strftime('%H:%M')
+                        if event.get('end'):
+                            st.session_state.event_details[event_id]['event_end_time'] = event.get('end').strftime('%H:%M')
+                        # Default transportation method to first option
+                        if st.session_state.transportation_methods:
+                            st.session_state.event_details[event_id]['transportation_method'] = st.session_state.transportation_methods[0]
+                        # Default departure location to first saved address
                         for addr_info in st.session_state.user_addresses:
                             if addr_info.get('saved', False) and addr_info.get('address'):
-                                details['departure_location'] = addr_info['address']
+                                st.session_state.event_details[event_id]['departure_location'] = addr_info['address']
                                 break
+                    
+                    details = st.session_state.event_details[event_id]
                     
                     # Check if detail request should be auto-ignored (24 hours passed)
                     if event_id in st.session_state.detail_request_timestamps:
@@ -591,8 +649,6 @@ def main():
                                 placeholder="Enter the event address or venue name",
                                 key=f"{event_id}_location"
                             )
-                            if location_value:
-                                details['location'] = location_value
                             
                             # Arrival time
                             current_arrival = details.get('arrival_time', '')
@@ -602,12 +658,6 @@ def main():
                                 placeholder="HH:MM (e.g., 09:30)",
                                 key=f"{event_id}_arrival_time"
                             )
-                            if arrival_value:
-                                try:
-                                    parsed_value = st.session_state.llm_module.parse_response(arrival_value, 'arrival_time')
-                                    details['arrival_time'] = parsed_value
-                                except ValueError as e:
-                                    st.error(str(e))
                             
                             # Event end time
                             current_end_time = details.get('event_end_time', '')
@@ -617,12 +667,6 @@ def main():
                                 placeholder="HH:MM (e.g., 17:00)",
                                 key=f"{event_id}_event_end_time"
                             )
-                            if end_time_value:
-                                try:
-                                    parsed_value = st.session_state.llm_module.parse_response(end_time_value, 'event_end_time')
-                                    details['event_end_time'] = parsed_value
-                                except ValueError as e:
-                                    st.error(str(e))
                             
                             # Transportation
                             current_transport = details.get('transportation_method', '')
@@ -634,8 +678,6 @@ def main():
                                 index=current_idx,
                                 key=f"{event_id}_transport"
                             )
-                            if transport_method and transport_method != current_transport:
-                                details['transportation_method'] = transport_method
                             
                             st.divider()
                             
@@ -643,6 +685,27 @@ def main():
                             col1, col2 = st.columns(2)
                             with col1:
                                 if st.button(f"💾 Save Details", key=f"save_{event_id}"):
+                                    # Now save the form values to details
+                                    if location_value:
+                                        details['location'] = location_value
+                                    if arrival_value:
+                                        try:
+                                            parsed_value = st.session_state.llm_module.parse_response(arrival_value, 'arrival_time')
+                                            details['arrival_time'] = parsed_value
+                                        except ValueError as e:
+                                            st.error(f"Invalid arrival time format: {e}")
+                                            st.stop()
+                                    if end_time_value:
+                                        try:
+                                            parsed_value = st.session_state.llm_module.parse_response(end_time_value, 'event_end_time')
+                                            details['event_end_time'] = parsed_value
+                                        except ValueError as e:
+                                            st.error(f"Invalid end time format: {e}")
+                                            st.stop()
+                                    if transport_method:
+                                        details['transportation_method'] = transport_method
+                                    
+                                    # Check if all required fields are filled
                                     if all(_get_effective_detail(event, details, field) for field in required_fields):
                                         log_event('event_details_saved', event['name'], details)
                                         st.success("✅ Details saved!")
@@ -698,15 +761,22 @@ def main():
                                 else:
                                     with st.spinner("🔍 Checking for potential issues..."):
                                         event_with_details = {**event, **details, 'location': location}
-                                        raw_issues = st.session_state.scraper.check_for_issues(event_with_details)
+                                        raw_issues = st.session_state.hiccup_agent.check_for_hiccups(event_with_details)
                                         
                                         # Always validate - even when no issues found, validator provides feedback
                                         log_info(f"Running validation for {event['name']} with {len(raw_issues)} raw issues")
                                         try:
+                                            # Count nudges today and this week
+                                            nudges_today = _count_nudges_today()
+                                            nudges_this_week = _count_nudges_this_week()
+                                            
                                             validation_result = st.session_state.alert_validator_agent.validate_alerts(
                                                 event=event_with_details,
                                                 issues=raw_issues,
-                                                event_importance="medium"  # Could be user-defined later
+                                                event_importance="medium",  # Could be user-defined later
+                                                nudges_today=nudges_today,
+                                                nudges_this_week=nudges_this_week,
+                                                days_until_event=days_until
                                             )
                                             # Use validated issues
                                             issues = [
@@ -725,9 +795,8 @@ def main():
                                                 'removed': validation_result.removed_count
                                             })
                                             
-                                            # Pass validation feedback to scraper for future improvements
-                                            if validation_result.llm_guidance:
-                                                st.session_state.scraper.add_validation_feedback(validation_result.llm_guidance)
+                                            # Note: Hiccup agent uses ReAct with its own memory, doesn't need feedback injection
+                                            # If needed, could store validation feedback in agent's context for future calls
                                         except Exception as e:
                                             # Fallback to raw issues on validation error
                                             log_error(f"Alert validation error: {e}")
@@ -755,6 +824,8 @@ def main():
                                             st.caption(f"🤖 {validation_result.llm_guidance}")
                                 
                                 if ran_check and issues:
+                                    # Record that we showed this alert
+                                    _record_nudge(event_id)
                                     for issue in issues:
                                         severity_icon = {
                                             'warning': '⚠️',

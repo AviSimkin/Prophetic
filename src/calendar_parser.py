@@ -140,7 +140,9 @@ def create_israeli_calendar() -> bytes:
             'name': 'פגישה עסקית - Tel Aviv',
             'days_offset': 3,
             'duration': 2,
-            'description': 'Important business meeting with startup founders'
+            'hours_offset': 14,
+            'description': 'Important business meeting with startup founders',
+            'location': 'Tel Aviv Business Center'
         },
         {
             'name': 'אירוע משפחתי - Haifa',
@@ -186,8 +188,14 @@ def create_israeli_calendar() -> bytes:
     for event_data in events_data:
         event = Event()
         event.add('summary', event_data['name'])
-        event.add('dtstart', base_date + timedelta(days=event_data['days_offset']))
-        event.add('dtend', base_date + timedelta(days=event_data['days_offset'], hours=event_data['duration']))
+        
+        # Calculate start time - use hours_offset if provided, otherwise start at midnight
+        start_datetime = base_date + timedelta(days=event_data['days_offset'])
+        if 'hours_offset' in event_data:
+            start_datetime = start_datetime.replace(hour=event_data['hours_offset'])
+        
+        event.add('dtstart', start_datetime)
+        event.add('dtend', start_datetime + timedelta(hours=event_data['duration']))
         event.add('description', event_data['description'])
         if 'location' in event_data:
             event.add('location', event_data['location'])
