@@ -141,47 +141,57 @@ def create_israeli_calendar() -> bytes:
             'days_offset': 3,
             'duration': 2,
             'hours_offset': 14,
-            'description': 'Important business meeting with startup founders',
-            'location': 'Tel Aviv Business Center'
+            'description': 'Important business meeting with startup founders'
+            # No location - user needs to enter where in Tel Aviv
         },
         {
             'name': 'אירוע משפחתי - Haifa',
             'days_offset': 6,
             'duration': 4,
-            'description': 'Family celebration dinner',
-            'location': 'German Colony, Haifa'
+            'hours_offset': 18,
+            'description': 'Family celebration dinner'
+            # No location - family events often don't have venue in calendar
         },
         {
             'name': 'Homework submission - Computer Science 101',
             'days_offset': 5,
             'duration': 0,
+            'hours_offset': 23,  # Due at 23:00
             'description': 'Submit final project code via online portal'
+            # No location - online submission
         },
         {
             'name': 'כנס היי-טק - Herzliya',
             'days_offset': 9,
             'duration': 6,
+            'hours_offset': 9,
             'description': 'Annual Hi-Tech conference and expo'
+            # No location - user needs to look up venue
         },
         {
             'name': 'טיול מאורגן - Dead Sea',
             'days_offset': 12,
             'duration': 10,
+            'hours_offset': 8,
             'description': 'Day trip to the Dead Sea with colleagues',
             'location': 'Ein Bokek, Dead Sea'
+            # Has location - organized trip with specific destination
         },
         {
             'name': 'השתלמות מקצועית - Jerusalem',
             'days_offset': 8,
             'duration': 3,
+            'hours_offset': 10,
             'description': 'Professional development workshop on AI'
+            # No location - just says "Jerusalem", needs specific venue
         },
         {
             'name': 'ארוחת צהריים - Haifa',
             'days_offset': 4,
             'duration': 2,
-            'description': 'Lunch meeting with potential investors',
-            'location': 'Azrieli Mall Haifa'
+            'hours_offset': 12,
+            'description': 'Lunch meeting with potential investors'
+            # No location - restaurant not specified in calendar
         }
     ]
 

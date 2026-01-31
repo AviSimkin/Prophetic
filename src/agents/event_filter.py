@@ -43,8 +43,12 @@ class EventFilterAgent:
         cache_key = self._get_cache_key(event)
         if cache_key in self._cache:
             cached_decision = self._cache[cache_key]
-            log_info(f"Event filter cache hit for {event.get('name', 'Unknown')}: should_ignore={cached_decision.should_ignore}, reason={cached_decision.reason}")
+            log_info(f"Event filter cache hit for {event.get('name', 'Unknown')}: should_ignore={cached_decision.should_ignore}")
             return cached_decision
+        
+        # Cache miss - make new decision and log it
+        log_info(f"Event filter cache miss for {event.get('name', 'Unknown')}, calling LLM")
+        
         # If we have an API key, use LLM for all decisions (minimal heuristics)
         if self.model:
             return self._llm_filter(event, cache_key)
@@ -130,6 +134,16 @@ Respond in JSON format:
             decision = EventFilterDecision(**data)
             # Cache the decision
             self._cache[cache_key] = decision
+            
+            # Log the filtering decision (only once, not on cache hits)
+            if decision.should_ignore:
+                from src.prophetic_logger import log_event
+                log_event('event_filtered', event.get('name', 'Unknown'), {
+                    'reason': decision.reason,
+                    'category': decision.event_category,
+                    'confidence': decision.confidence
+                })
+            
             return decision
         
         except Exception as e:

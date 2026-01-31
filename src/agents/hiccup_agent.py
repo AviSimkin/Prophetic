@@ -214,7 +214,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                 response=response_text,
                 input_tokens=getattr(response, 'usage_metadata', {}).get('prompt_token_count'),
                 output_tokens=getattr(response, 'usage_metadata', {}).get('candidates_token_count'),
-                metadata={'agent': 'hiccup_react', 'iteration': iteration + 1}
+                metadata={'agent': 'hiccup_react', 'iteration': iteration + 1, 'event_name': context.split('\n')[0].replace('Event: ', '')}
             )
             
             # Extract JSON - be aggressive about finding it

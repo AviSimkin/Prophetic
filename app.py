@@ -105,15 +105,7 @@ def is_actionable_event(event: dict) -> bool:
     """
     try:
         decision = st.session_state.event_filter_agent.should_process_event(event)
-        
-        # Log the decision for transparency
-        if decision.should_ignore:
-            log_event('event_filtered', event.get('name', 'Unknown'), {
-                'reason': decision.reason,
-                'category': decision.event_category,
-                'confidence': decision.confidence
-            })
-        
+        # Logging now happens inside the agent (only on cache miss)
         return not decision.should_ignore
     except Exception as e:
         # Fallback to original heuristic on error
@@ -521,21 +513,16 @@ def main():
                     if event_id not in st.session_state.event_details:
                         st.session_state.event_details[event_id] = {}
                         
-                        # Pre-populate with event defaults ONLY on first creation
+                        # Pre-populate ONLY with data from calendar (not guesses)
+                        # This allows browser auto-fill to work for the rest
                         if event.get('location'):
                             st.session_state.event_details[event_id]['location'] = event.get('location')
                         if event.get('start'):
                             st.session_state.event_details[event_id]['arrival_time'] = event.get('start').strftime('%H:%M')
                         if event.get('end'):
                             st.session_state.event_details[event_id]['event_end_time'] = event.get('end').strftime('%H:%M')
-                        # Default transportation method to first option
-                        if st.session_state.transportation_methods:
-                            st.session_state.event_details[event_id]['transportation_method'] = st.session_state.transportation_methods[0]
-                        # Default departure location to first saved address
-                        for addr_info in st.session_state.user_addresses:
-                            if addr_info.get('saved', False) and addr_info.get('address'):
-                                st.session_state.event_details[event_id]['departure_location'] = addr_info['address']
-                                break
+                        # Don't pre-fill transportation_method or departure_location
+                        # Let user fill via browser auto-fill or manual entry
                     
                     details = st.session_state.event_details[event_id]
                     
@@ -818,10 +805,20 @@ def main():
                                     }
                                     priority_icon = priority_colors.get(validation_result.priority, '⚪')
                                     st.caption(f"{priority_icon} Priority: {validation_result.priority.upper()}")
+                                    
+                                    # Alert user if validator found problems
+                                    if validation_result.removed_count > 0:
+                                        st.warning(f"⚠️ Validator removed {validation_result.removed_count} potentially incorrect alert(s). Please verify remaining warnings.")
+                                    
+                                    if not validation_result.is_valid and issues:
+                                        st.warning("⚠️ Alert validation flagged potential issues - please verify this information independently.")
+                                    
                                     if validation_result.validation_notes:
                                         st.caption(f"ℹ️ {validation_result.validation_notes}")
-                                        if validation_result.llm_guidance:
-                                            st.caption(f"🤖 {validation_result.llm_guidance}")
+                                
+                                # Show validation error if fallback was used
+                                elif ran_check and issues and not validation_result:
+                                    st.warning("⚠️ Alert validation unavailable - showing unverified warnings. Please verify independently.")
                                 
                                 if ran_check and issues:
                                     # Record that we showed this alert
@@ -905,9 +902,21 @@ def main():
                 for i, call in enumerate(logger.session_data['llm_calls']):
                     timestamp = call['timestamp'].split('T')[1][:8] if 'T' in call['timestamp'] else call['timestamp']
                     purpose = call['metadata'].get('purpose', 'N/A')
+                    agent = call['metadata'].get('agent', 'unknown')
+                    event_name = call['metadata'].get('event_name', '')
                     tokens = f"{call.get('input_tokens', '?')} in + {call.get('output_tokens', '?')} out"
                     
-                    with st.expander(f"#{i+1} [{timestamp}] {purpose} ({tokens})", expanded=False):
+                    # Build expander label with agent icon and event name
+                    agent_icons = {
+                        'event_filter': '🔍',
+                        'alert_validator': '✅',
+                        'hiccup_react': '🚨',
+                        'question_generator': '❓'
+                    }
+                    agent_icon = agent_icons.get(agent, '🤖')
+                    event_part = f" | Event: {event_name}" if event_name else ""
+                    
+                    with st.expander(f"#{i+1} {agent_icon} {agent} [{timestamp}]{event_part} ({tokens})", expanded=False):
                         col1, col2 = st.columns([1, 1])
                         
                         with col1:
