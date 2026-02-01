@@ -172,6 +172,15 @@ def main():
     st.title("🔮 Prophetic Calendar")
     st.markdown("*Predictive event management with proactive alerts*")
     
+    # AI disclaimer - always visible
+    with st.expander("ℹ️ About AI-Powered Alerts", expanded=False):
+        st.info(
+            "🤖 **This system uses AI** to detect potential travel issues (weather, traffic, events) and validate alerts. "
+            "While we aim to be accurate, **please verify important information independently** "
+            "(weather forecasts, traffic conditions, event details) before making travel decisions. "
+            "Use these alerts as helpful guidance, not as definitive facts."
+        )
+    
     # Sidebar for configuration
     with st.sidebar:
         # Demo mode toggle
@@ -501,7 +510,10 @@ def main():
             events_within_7days.sort(key=lambda e: e['start'])
             
             if not events_within_7days:
-                st.info("No upcoming events within the next 7 days.")
+                if st.session_state.events:
+                    st.info("ℹ️ No events needing attention in the next 7 days (all are holidays, tasks, or reminders).")
+                else:
+                    st.info("👆 Please upload a calendar file first!")
             else:
                 st.success(f"📋 {len(events_within_7days)} event(s) within 7 days")
                 

@@ -212,8 +212,8 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                 model=self.model_name,
                 prompt=prompt,
                 response=response_text,
-                input_tokens=getattr(response, 'usage_metadata', {}).get('prompt_token_count'),
-                output_tokens=getattr(response, 'usage_metadata', {}).get('candidates_token_count'),
+                input_tokens=getattr(getattr(response, 'usage_metadata', None), 'prompt_token_count', None),
+                output_tokens=getattr(getattr(response, 'usage_metadata', None), 'candidates_token_count', None),
                 metadata={'agent': 'hiccup_react', 'iteration': iteration + 1, 'event_name': context.split('\n')[0].replace('Event: ', '')}
             )
             

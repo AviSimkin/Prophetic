@@ -219,8 +219,8 @@ Respond in JSON:
                 model=self.model_name,
                 prompt=prompt,
                 response=response_text,
-                input_tokens=getattr(response, 'usage_metadata', {}).get('prompt_token_count'),
-                output_tokens=getattr(response, 'usage_metadata', {}).get('candidates_token_count'),
+                input_tokens=getattr(getattr(response, 'usage_metadata', None), 'prompt_token_count', None),
+                output_tokens=getattr(getattr(response, 'usage_metadata', None), 'candidates_token_count', None),
                 metadata={'agent': 'alert_validator', 'event_name': event.get('name', 'Unknown'), 'issue_count': len(issues)}
             )
             
