@@ -511,7 +511,7 @@ def main():
             
             if not events_within_7days:
                 if st.session_state.events:
-                    st.info("ℹ️ No events needing attention in the next 7 days (all are holidays, tasks, or reminders).")
+                    st.info("ℹ️ No notifications are being shown to the user.")
                 else:
                     st.info("👆 Please upload a calendar file first!")
             else:

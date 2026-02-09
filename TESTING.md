@@ -35,8 +35,8 @@ This document records the manual testing performed on the Prophetic Calendar app
 **Test**: Collect event details 7 days before event
 **Steps**:
 1. Advance to 2025-12-23 (7 days before Conference on 2025-12-30)
-2. Go to "Event Details" tab
-**Expected**: Form appears asking for location, arrival time, departure time
+2. Go to the "Notifications" tab
+**Expected**: A details request appears asking for missing event info (e.g., location and timing)
 **Result**: ✅ PASSED - Form appeared with three questions for Conference event
 
 ### 5. Save Event Details
@@ -53,8 +53,8 @@ This document records the manual testing performed on the Prophetic Calendar app
 **Test**: View alerts 7 days before event
 **Steps**:
 1. At date 2025-12-23 (7 days before Conference)
-2. Go to "Alerts" tab
-**Expected**: Alert shown for Conference with location and no issues detected
+2. Go to the "Notifications" tab
+**Expected**: An alert appears for Conference (after details are complete/ignored) with location and issue checks
 **Result**: ✅ PASSED - Alert displayed showing:
   - Event in 7 days
   - Location: San Francisco Convention Center
