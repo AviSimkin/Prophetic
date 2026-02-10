@@ -208,10 +208,10 @@ def main():
             "This intelligent assistant analyzes your calendar to surface potential hiccups. The system:\n"
             "- 🔍 **Searches the web** for relevant information (weather, local events, road conditions)\n"
             "- 🗺️ **Checks travel times** using Google Maps to detect traffic and routing issues\n"
-            "- 🔕 **Suppresses irrelevant notifications** to avoid over-burdening you with unnecessary alerts\n\n"
+            "- 🔕 **Suppresses irrelevant notifications** to avoid over-burdening you with unnecessary alerts \n\n"
             "⚠️ **AI Disclaimer**: This system uses artificial intelligence which can make mistakes. "
             "**Please verify important information independently** before making travel decisions. "
-            "Use these alerts as helpful guidance, not as definitive facts."
+            "Use these alerts as helpful guidance, not as definitive facts. It is advised to visit the suppressed notifications section to review them in case we missed something important."
         )
     
     # Sidebar for configuration
