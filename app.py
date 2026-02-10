@@ -354,9 +354,8 @@ def main():
             st.session_state.tavily_key = env_tavily_key
         
     # Main content
-    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "🔔 Notifications"]
+    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "🔔 Notifications", "🔕 Suppressed"]
     if st.session_state.demo_mode:
-        tabs_list.append("🔕 Suppressed")
         tabs_list.append("📊 Nudge Stats")
         tabs_list.append("📊 Debug Logs")
     
@@ -364,7 +363,7 @@ def main():
     tab_setup = tabs[0]
     tab1 = tabs[1]
     tab_notifications = tabs[2]
-    tab_suppressed = tabs[3] if st.session_state.demo_mode else None
+    tab_suppressed = tabs[3]
     tab_nudges = tabs[4] if st.session_state.demo_mode else None
     tab_debug = tabs[5] if st.session_state.demo_mode else None
     
@@ -898,8 +897,8 @@ def main():
                     st.divider()
                     st.caption(f"✅ {dismissed_count} notification(s) dismissed")
     
-    # Suppressed Notifications tab (only visible in demo mode)
-    if st.session_state.demo_mode and tab_suppressed:
+    # Suppressed Notifications tab
+    if tab_suppressed:
         with tab_suppressed:
             st.header("🔕 Suppressed Notifications")
             st.markdown("*Events and alerts that were filtered out or found to have no issues*")
