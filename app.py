@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.calendar_parser import parse_calendar_file, create_sample_calendar, create_israeli_calendar
+from src.calendar_parser import parse_calendar_file, create_israeli_calendar
 from src.llm_module import LLMModule
 from src.timeline_simulator import TimelineSimulator
 from src.prophetic_logger import get_logger, log_event, log_info, log_error
@@ -97,15 +97,25 @@ if 'nudge_counters' not in st.session_state:
 if 'transportation_methods' not in st.session_state:
     st.session_state.transportation_methods = ['Car', 'Public Transit', 'Walking', 'Bike', 'Other']
 
+if 'suppressed_notifications' not in st.session_state:
+    st.session_state.suppressed_notifications = []  # List of {event_id, event_name, date, reason, timestamp}
+
+
 
 def is_actionable_event(event: dict) -> bool:
     """
     Use EventFilterAgent to determine if event should be processed.
     Falls back to heuristic if agent fails.
+    Records suppression reason if event is filtered out.
     """
     try:
         decision = st.session_state.event_filter_agent.should_process_event(event)
         # Logging now happens inside the agent (only on cache miss)
+        if decision.should_ignore:
+            # Record suppression
+            event_id = f"{event['name']}_{event['start']}"
+            reason = decision.reason or "Event filtered as not actionable"
+            _record_suppression(event_id, event['name'], event['start'], reason, 'event_filter')
         return not decision.should_ignore
     except Exception as e:
         # Fallback to original heuristic on error
@@ -116,12 +126,16 @@ def is_actionable_event(event: dict) -> bool:
             'birthday', 'anniversary', 'payday', 'bill', 'invoice'
         ]
         if any(keyword in name for keyword in auto_keywords):
+            event_id = f"{event['name']}_{event['start']}"
+            _record_suppression(event_id, event['name'], event['start'], f"Event type not actionable (matched keyword)", 'heuristic_filter')
             return False
         start = event.get('start')
         end = event.get('end')
         if isinstance(start, datetime) and isinstance(end, datetime):
             duration = end - start
             if start.hour == 0 and start.minute == 0 and duration >= timedelta(hours=23):
+                event_id = f"{event['name']}_{event['start']}"
+                _record_suppression(event_id, event['name'], event['start'], "All-day event not requiring travel prep", 'heuristic_filter')
                 return False
         return True
 
@@ -146,6 +160,21 @@ def _count_nudges_this_week() -> int:
 def _record_nudge(event_id: str) -> None:
     """Record that a nudge/alert was shown for an event."""
     st.session_state.nudge_history.append((event_id, datetime.now().timestamp()))
+
+
+def _record_suppression(event_id: str, event_name: str, event_date: datetime, reason: str, source: str) -> None:
+    """Record a suppressed notification with its reason."""
+    # Check if this suppression already exists
+    existing = [s for s in st.session_state.suppressed_notifications if s['event_id'] == event_id and s['source'] == source]
+    if not existing:
+        st.session_state.suppressed_notifications.append({
+            'event_id': event_id,
+            'event_name': event_name,
+            'event_date': event_date,
+            'reason': reason,
+            'source': source,
+            'timestamp': datetime.now()
+        })
 
 
 def _get_effective_detail(event: dict, details: dict, field: str) -> str:
@@ -321,8 +350,9 @@ def main():
             st.session_state.tavily_key = env_tavily_key
         
     # Main content
-    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "� Notifications"]
+    tabs_list = ["🏠 Setup", "📅 Calendar Upload", "🔔 Notifications"]
     if st.session_state.demo_mode:
+        tabs_list.append("🔕 Suppressed")
         tabs_list.append("📊 Nudge Stats")
         tabs_list.append("📊 Debug Logs")
     
@@ -330,8 +360,9 @@ def main():
     tab_setup = tabs[0]
     tab1 = tabs[1]
     tab_notifications = tabs[2]
-    tab_nudges = tabs[3] if st.session_state.demo_mode else None
-    tab_debug = tabs[4] if st.session_state.demo_mode else None
+    tab_suppressed = tabs[3] if st.session_state.demo_mode else None
+    tab_nudges = tabs[4] if st.session_state.demo_mode else None
+    tab_debug = tabs[5] if st.session_state.demo_mode else None
     
     with tab_setup:
         st.header("Setup Your Addresses")
@@ -434,20 +465,12 @@ def main():
         with col2:
             if st.session_state.demo_mode:
                 st.markdown("### Or use sample data")
-                if st.button("📝 Load Sample Calendar"):
-                    sample_calendar = create_sample_calendar()
-                    events = parse_calendar_file(sample_calendar)
-                    st.session_state.events = events
-                    log_event('calendar_load', 'Sample Calendar', {'event_count': len(events)})
-                    st.success(f"✅ Loaded {len(events)} sample events!")
-                    st.rerun()
-                
-                if st.button("🇮🇱 Load Israeli Calendar"):
+                if st.button("🇮🇱 Load Demo Calendar"):
                     israeli_calendar = create_israeli_calendar()
                     events = parse_calendar_file(israeli_calendar)
                     st.session_state.events = events
                     log_event('calendar_load', 'Israeli Calendar', {'event_count': len(events)})
-                    st.success(f"✅ Loaded {len(events)} Israeli events!")
+                    st.success(f"✅ Loaded {len(events)} demo events!")
                     st.rerun()
         
         # Display loaded events
@@ -558,17 +581,76 @@ def main():
                         notification_type = "detail_request"
                         icon = "📝"
                         title = f"{icon} Details Needed: {event['name']}"
-                    elif (details_complete or details_ignored) and alert_generated and not alert_dismissed:
-                        # Show alert (only after issue check has been run)
-                        notification_type = "alert"
-                        icon = "⚠️"
-                        title = f"{icon} Alert: {event['name']}"
-                    elif (details_complete or details_ignored) and not alert_generated:
-                        # Details just saved/ignored, mark alert as ready (check will run when shown)
-                        st.session_state.alerts_generated.add(event_id)
-                        notification_type = "alert"
-                        icon = "⚠️"
-                        title = f"{icon} Alert: {event['name']}"
+                    elif (details_complete or details_ignored):
+                        # Details complete/ignored - check if we should show alert
+                        # Mark as alert_generated so we run the check
+                        if not alert_generated:
+                            st.session_state.alerts_generated.add(event_id)
+                            alert_generated = True
+                        
+                        if alert_dismissed:
+                            # Already dismissed, skip
+                            continue
+                        
+                        # Check if we have cached issues or need to run check
+                        location = details.get('location') or event.get('location', '')
+                        cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
+                        
+                        # If not cached, run the check NOW before deciding to display
+                        if cache_key not in st.session_state.issues_cache:
+                            # Run the check silently to determine if we should show
+                            event_with_details = {**event, **details, 'location': location}
+                            raw_issues = st.session_state.hiccup_agent.check_for_hiccups(event_with_details)
+                            
+                            # Always validate
+                            try:
+                                nudges_today = _count_nudges_today()
+                                nudges_this_week = _count_nudges_this_week()
+                                
+                                validation_result = st.session_state.alert_validator_agent.validate_alerts(
+                                    event=event_with_details,
+                                    issues=raw_issues,
+                                    event_importance="medium",
+                                    nudges_today=nudges_today,
+                                    nudges_this_week=nudges_this_week,
+                                    days_until_event=days_until
+                                )
+                                issues = [
+                                    {
+                                        'message': i.message,
+                                        'details': i.details,
+                                        'severity': i.severity,
+                                        'source': i.source
+                                    }
+                                    for i in validation_result.filtered_issues
+                                ]
+                            except Exception as e:
+                                log_error(f"Alert validation error: {e}")
+                                issues = raw_issues if raw_issues else []
+                            
+                            # Cache the results
+                            st.session_state.issues_cache[cache_key] = {
+                                'issues': issues,
+                                'validation': validation_result if 'validation_result' in locals() else None
+                            }
+                        
+                        # Now check if we have issues
+                        cached_data = st.session_state.issues_cache[cache_key]
+                        if isinstance(cached_data, dict) and 'issues' in cached_data:
+                            has_issues = len(cached_data['issues']) > 0
+                        else:
+                            has_issues = len(cached_data) > 0 if cached_data else False
+                        
+                        if has_issues:
+                            # Show alert - we have issues to display
+                            notification_type = "alert"
+                            icon = "⚠️"
+                            title = f"{icon} Alert: {event['name']}"
+                        else:
+                            # No issues found - suppress and track
+                            _record_suppression(event_id, event['name'], event['start'], 
+                                              "No issues detected - all checks passed", 'no_issues_after_check')
+                            continue
                     else:
                         # Already dismissed, skip
                         continue
@@ -742,71 +824,19 @@ def main():
                                     st.session_state[alert_nudge_key] = True
                                     log_event('nudge_shown', event['name'], {'days_before': days_until, 'date': current_date_str})
                                 
-                                # Check for issues
+                                # Get cached issues (they were already checked before deciding to show this alert)
                                 issues = None
                                 validation_result = None
-                                ran_check = False
                                 cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
                                 
+                                # At this point, cache must exist because we checked before showing
                                 if cache_key in st.session_state.issues_cache:
                                     cached_data = st.session_state.issues_cache[cache_key]
-                                    # Check if cache has validation (new format) or just issues (old format)
                                     if isinstance(cached_data, dict) and 'validation' in cached_data:
                                         issues = cached_data['issues']
                                         validation_result = cached_data['validation']
                                     else:
                                         issues = cached_data
-                                    ran_check = True
-                                else:
-                                    with st.spinner("🔍 Checking for potential issues..."):
-                                        event_with_details = {**event, **details, 'location': location}
-                                        raw_issues = st.session_state.hiccup_agent.check_for_hiccups(event_with_details)
-                                        
-                                        # Always validate - even when no issues found, validator provides feedback
-                                        log_info(f"Running validation for {event['name']} with {len(raw_issues)} raw issues")
-                                        try:
-                                            # Count nudges today and this week
-                                            nudges_today = _count_nudges_today()
-                                            nudges_this_week = _count_nudges_this_week()
-                                            
-                                            validation_result = st.session_state.alert_validator_agent.validate_alerts(
-                                                event=event_with_details,
-                                                issues=raw_issues,
-                                                event_importance="medium",  # Could be user-defined later
-                                                nudges_today=nudges_today,
-                                                nudges_this_week=nudges_this_week,
-                                                days_until_event=days_until
-                                            )
-                                            # Use validated issues
-                                            issues = [
-                                                {
-                                                    'message': i.message,
-                                                    'details': i.details,
-                                                    'severity': i.severity,
-                                                    'source': i.source
-                                                }
-                                                for i in validation_result.filtered_issues
-                                            ]
-                                            log_event('alerts_validated', event['name'], {
-                                                'original_count': len(raw_issues),
-                                                'filtered_count': len(issues),
-                                                'priority': validation_result.priority,
-                                                'removed': validation_result.removed_count
-                                            })
-                                            
-                                            # Note: Hiccup agent uses ReAct with its own memory, doesn't need feedback injection
-                                            # If needed, could store validation feedback in agent's context for future calls
-                                        except Exception as e:
-                                            # Fallback to raw issues on validation error
-                                            log_error(f"Alert validation error: {e}")
-                                            issues = raw_issues if raw_issues else []
-                                        
-                                        # Cache both issues and validation
-                                        st.session_state.issues_cache[cache_key] = {
-                                            'issues': issues,
-                                            'validation': validation_result
-                                        }
-                                        ran_check = True
                                 
                                 # Display validation priority if available
                                 if validation_result:
@@ -828,11 +858,8 @@ def main():
                                     if validation_result.validation_notes:
                                         st.caption(f"ℹ️ {validation_result.validation_notes}")
                                 
-                                # Show validation error if fallback was used
-                                elif ran_check and issues and not validation_result:
-                                    st.warning("⚠️ Alert validation unavailable - showing unverified warnings. Please verify independently.")
-                                
-                                if ran_check and issues:
+                                # Display issues (we know there are issues because we checked before showing)
+                                if issues:
                                     # Record that we showed this alert
                                     _record_nudge(event_id)
                                     for issue in issues:
@@ -844,8 +871,6 @@ def main():
                                         st.markdown(f"{severity_icon} {issue['message']}")
                                         if issue.get('details'):
                                             st.caption(f"ℹ️ {issue['details']}")
-                                elif ran_check and issues == []:
-                                    st.success("✅ No issues detected!")
                                 
                                 # Travel info
                                 if details.get('arrival_time'):
@@ -869,6 +894,63 @@ def main():
                     st.divider()
                     st.caption(f"✅ {dismissed_count} notification(s) dismissed")
     
+    # Suppressed Notifications tab (only visible in demo mode)
+    if st.session_state.demo_mode and tab_suppressed:
+        with tab_suppressed:
+            st.header("🔕 Suppressed Notifications")
+            st.markdown("*Events and alerts that were filtered out or found to have no issues*")
+            st.info("This tab shows why certain events don't appear in your main Notifications feed.")
+            
+            if not st.session_state.suppressed_notifications:
+                st.info("No suppressions yet. As events are filtered or checked, they'll appear here.")
+            else:
+                # Sort by timestamp, most recent first
+                sorted_suppressions = sorted(
+                    st.session_state.suppressed_notifications, 
+                    key=lambda x: x['timestamp'], 
+                    reverse=True
+                )
+                
+                # Group by source for better organization
+                by_source = {}
+                for suppression in sorted_suppressions:
+                    source = suppression['source']
+                    if source not in by_source:
+                        by_source[source] = []
+                    by_source[source].append(suppression)
+                
+                # Display metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Suppressed", len(sorted_suppressions))
+                with col2:
+                    event_filter_count = len(by_source.get('event_filter', [])) + len(by_source.get('heuristic_filter', []))
+                    st.metric("Filtered Events", event_filter_count)
+                with col3:
+                    no_issues_count = len(by_source.get('no_issues', [])) + len(by_source.get('no_issues_after_check', []))
+                    st.metric("No Issues Found", no_issues_count)
+                
+                st.divider()
+                
+                # Display by category
+                source_labels = {
+                    'event_filter': '🔍 Filtered by Event Filter Agent',
+                    'heuristic_filter': '🔍 Filtered by Heuristic',
+                    'no_issues': '✅ No Issues Detected (Cached)',
+                    'no_issues_after_check': '✅ No Issues Detected (After Check)'
+                }
+                
+                for source, label in source_labels.items():
+                    if source in by_source:
+                        with st.expander(f"{label} ({len(by_source[source])} events)", expanded=False):
+                            for suppression in by_source[source]:
+                                event_date_str = suppression['event_date'].strftime('%Y-%m-%d %H:%M')
+                                timestamp_str = suppression['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                                
+                                st.markdown(f"**{suppression['event_name']}** - {event_date_str}")
+                                st.caption(f"📝 Reason: {suppression['reason']}")
+                                st.caption(f"🕐 Suppressed at: {timestamp_str}")
+                                st.divider()
 
     # Nudge Stats tab (only visible in demo mode)
     if st.session_state.demo_mode and tab_nudges:

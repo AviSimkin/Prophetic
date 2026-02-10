@@ -10,8 +10,9 @@ An intelligent calendar assistant that reviews your schedule and proactively sur
 - **🤖 Agentic Intelligence**: ReAct-based agents proactively scan your calendar for potential issues using web search, Maps API, and weather data
 - **📅 Smart Calendar Intake**: Upload .ics files or use demo calendars for quick testing
 - **📝 Context Collection**: Guided prompts to fill missing event details (departure location, transport method, timing) using Gemini when available
-- **🚨 Proactive Alerts**: 7-day and 1-day advance warnings for traffic, weather disruptions, nearby events, or missing information
+- **🚨 Proactive Alerts**: Only shows alerts when actual issues are detected; events with no issues are automatically suppressed
 - **🧭 Address Book**: Save common locations for quick reuse across events
+- **🔕 Suppression Transparency**: View all filtered events and suppressed alerts with detailed reasons (demo mode)
 
 Back-end features that are only relevant for development and course submission:
 - **🎮 Demo Mode**: Simulated timeline controls for demonstrations and testing; production mode uses real-time
@@ -57,7 +58,13 @@ Prophetic follows a human-AI collaborative approach grounded in HAI and nudging 
 ### Navigation
 
 - **Setup**: Manage your address book with common locations
+- **Calendar Upload**: Upload .ics files or load demo calendars
 - **Notifications**: Review proactive warnings about traffic, weather, nearby events, or missing details; complete event information when needed
+  - Detail requests automatically disappear after submission
+  - Alerts only appear when issues are detected
+- **Suppressed** (demo mode): View all filtered events and alerts that were suppressed, with explanations:
+  - Events filtered as non-actionable (holidays, reminders, all-day events)
+  - Events where all checks passed with no issues found
 - **Nudge Stats** (demo mode): Monitor how often the system prompts you
 - **Debug Logs** (demo mode): Inspect system activity and LLM calls for transparency
 
