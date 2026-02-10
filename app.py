@@ -204,9 +204,13 @@ def main():
     # AI disclaimer - always visible
     with st.expander("ℹ️ About AI-Powered Alerts", expanded=False):
         st.info(
-            "🤖 **This system uses AI** to detect potential travel issues (weather, traffic, events) and validate alerts. "
-            "While we aim to be accurate, **please verify important information independently** "
-            "(weather forecasts, traffic conditions, event details) before making travel decisions. "
+            "🤖 **About This System**\n\n"
+            "This intelligent assistant analyzes your calendar to surface potential hiccups. The system:\n"
+            "- 🔍 **Searches the web** for relevant information (weather, local events, road conditions)\n"
+            "- 🗺️ **Checks travel times** using Google Maps to detect traffic and routing issues\n"
+            "- 🔕 **Suppresses irrelevant notifications** to avoid over-burdening you with unnecessary alerts\n\n"
+            "⚠️ **AI Disclaimer**: This system uses artificial intelligence which can make mistakes. "
+            "**Please verify important information independently** before making travel decisions. "
             "Use these alerts as helpful guidance, not as definitive facts."
         )
     
