@@ -166,27 +166,36 @@ class AlertValidatorAgent:
         ])
         
         prompt = f"""You are an alert validation agent. Review these alerts for a calendar event and:
-1. Check if they are relevant and accurate (no hallucinations or obvious mistakes)
-2. Assign an overall priority: low, medium, or high
+1. First, infer the event's importance (low/medium/high) based on the event type, name, and context
+2. Check if alerts are relevant and accurate (no hallucinations or obvious mistakes)
+3. Assign an overall priority: low, medium, or high
+
+Event Importance Guidelines:
+- HIGH importance: Medical appointments, work meetings, flights, legal appointments, job interviews, important presentations
+- MEDIUM importance: Regular meetings, social gatherings with plans, classes, sports practice, routine appointments
+- LOW importance: Casual coffee chats, informal hangouts, optional social events, errands
 
 Few-shot examples:
-1. Event: "Doctor appointment", Date: "2026-02-15 09:00", Location: "Medical Center", Importance: high
+1. Event: "Doctor appointment", Date: "2026-02-15 09:00", Location: "Medical Center"
+   Inferred importance: high (medical appointment)
    Alert: "Heavy rain expected" (severity: warning)
-   → {{"is_valid": true, "priority": "high", "issues_to_keep": ["Heavy rain expected"], "validation_notes": "Weather risk relevant for health appointment", "llm_guidance": "Good - weather impacts medical travel"}}
+   → {{"is_valid": true, "priority": "high", "event_importance": "high", "issues_to_keep": ["Heavy rain expected"], "validation_notes": "Weather risk relevant for health appointment", "llm_guidance": "Good - weather impacts medical travel"}}
 
-2. Event: "Coffee chat", Date: "2026-02-20 15:00", Location: "Cafe Downtown", Importance: low
+2. Event: "Coffee chat", Date: "2026-02-20 15:00", Location: "Cafe Downtown"
+   Inferred importance: low (casual social)
    Alert: "Light drizzle possible" (severity: info)
-   → {{"is_valid": false, "priority": "low", "issues_to_keep": [], "removed_count": 1, "validation_notes": "Minor weather for casual event", "llm_guidance": "Don't report routine weather for informal meetings"}}
+   → {{"is_valid": false, "priority": "low", "event_importance": "low", "issues_to_keep": [], "removed_count": 1, "validation_notes": "Minor weather for casual event", "llm_guidance": "Don't report routine weather for informal meetings"}}
 
-3. Event: "Business meeting", Date: "2026-03-01 10:00", Location: "Office Park", Importance: high
+3. Event: "Business meeting", Date: "2026-03-01 10:00", Location: "Office Park"
+   Inferred importance: high (work meeting)
    Alert: "Major soccer game at nearby stadium causing traffic delays" (severity: critical)
-   → {{"is_valid": true, "priority": "high", "issues_to_keep": ["Major soccer game at nearby stadium causing traffic delays"], "validation_notes": "Verified event-specific traffic impact", "llm_guidance": "Good - specific local event with travel impact"}}
+   → {{"is_valid": true, "priority": "high", "event_importance": "high", "issues_to_keep": ["Major soccer game at nearby stadium causing traffic delays"], "validation_notes": "Verified event-specific traffic impact", "llm_guidance": "Good - specific local event with travel impact"}}
 
-Event:
+Event to analyze:
 - Name: {event.get('name', 'N/A')}
 - Date: {event.get('start', 'N/A')}
 - Location: {event.get('location', 'N/A')}
-- User's importance rating: {event_importance}
+- Description: {event.get('description', 'N/A')}
 
 Alerts to validate:
 {issues_text}
@@ -195,15 +204,16 @@ Validation criteria:
 - REJECT alerts that are: generic/obvious, not specific to this event, contradictory, or likely hallucinated
 - KEEP alerts that are: specific, actionable, verifiable, and relevant to travel/attendance
 
-Priority guidelines:
-- HIGH: Critical severity + important event (doctor, work meeting, flight)
-- MEDIUM: Warning severity OR important event with info alerts
-- LOW: Info severity + routine event, or single minor warning
+Priority guidelines (combine inferred importance + alert severity):
+- HIGH: Critical severity + high importance event, OR warning severity + high importance with multiple issues
+- MEDIUM: Warning severity + medium importance, OR info severity + high importance event
+- LOW: Info severity + low/medium importance, OR single minor warning for routine events
 
 Respond in JSON:
 {{
+    "event_importance": "low|medium|high",
     "is_valid": true/false,
-    "validation_notes": "brief explanation of what you kept/removed",
+    "validation_notes": "brief explanation of importance inference and what you kept/removed",
     "priority": "low|medium|high",
     "issues_to_keep": ["message text of valid alerts"],
     "removed_count": 0,
