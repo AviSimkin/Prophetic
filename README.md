@@ -2,7 +2,7 @@
 
 An intelligent calendar assistant that reviews your schedule and proactively surfaces potential hiccups around upcoming events. Prophetic analyzes calendar items using temporal, spatial, and contextual information, fills in missing details through targeted questions, and uses external signals like traffic, weather, and local events to produce grounded, actionable notifications.
 
-**[Try the live demo →](https://prophetic-zevnlm55ta8gzqfyxlbyck.streamlit.app/)**  
+**[Try the live demo →](https://prophetic-zevnlm55ta8gzq.streamlit.app/)**  
 *Note: The app may spin down due to inactivity. If the page is unavailable, click "Get the app back up" to wake it.*
 
 ## Key Features
