@@ -48,7 +48,7 @@ class HiccupAgent:
     def check_for_hiccups(
         self,
         event: dict,
-        max_iterations: int = 5
+        max_iterations: int = 7
     ) -> List[Dict[str, str]]:
         """
         Use ReAct loop to check for potential travel hiccups.
@@ -719,27 +719,97 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
         return result
     
     def _extract_final_issues(self) -> List[Dict[str, str]]:
-        """Extract issues from action history when max iterations reached."""
-        # Look through observations for any mentioned issues
+        """Extract issues from action history when max iterations reached.
+        
+        Intelligently parse observations to find actual issues:
+        - Soccer/football games at nearby stadiums
+        - Weather problems (rain, storms, extreme conditions)
+        - Road closures or traffic issues
+        - Specific events that could impact travel
+        """
         issues = []
         
+        # Parse observations for specific patterns
         for action in self.action_history:
             observation = action.get('observation', '')
-            # Simple heuristic: if observation mentions delays, weather issues, etc.
-            if 'delay' in observation.lower() or 'traffic' in observation.lower():
+            obs_lower = observation.lower()
+            
+            # 1. Check for stadium/game findings
+            if 'stadium' in obs_lower and any(indicator in obs_lower for indicator in ['game', 'match', 'vs', 'football', 'soccer', 'fc']):
+                # Extract game details
+                game_details = observation[:500]  # Get more context
+                
+                # Look for specific patterns like "Team A vs Team B", "8:15 PM", dates
+                import re
+                
+                # Try to find game info
+                if 'sammy ofer' in obs_lower or 'bloomfield' in obs_lower or 'teddy stadium' in obs_lower:
+                    # Found a stadium mentioned with game context
+                    severity = 'warning'
+                    
+                    # Check if it's same day/time concern
+                    if any(time_word in obs_lower for time_word in ['8:15', '20:15', 'same day', 'evening', 'sunday', 'saturday']):
+                        severity = 'critical'
+                    
+                    issues.append({
+                        'message': 'A major soccer game at nearby stadium could cause traffic delays and parking issues',
+                        'severity': severity,
+                        'details': game_details,
+                        'source': 'local_events'
+                    })
+            
+            # 2. Check for weather issues (but more specific)
+            weather_problems = {
+                'heavy rain': 'warning',
+                'storm': 'warning', 
+                'severe weather': 'critical',
+                'flood': 'critical',
+                'snow': 'warning',
+                'extreme': 'warning',
+                'weather alert': 'warning'
+            }
+            for weather_term, sev in weather_problems.items():
+                if weather_term in obs_lower:
+                    # Extract weather forecast details
+                    weather_details = observation[:300]
+                    
+                    # Try to find temperature, rain %, etc.
+                    issues.append({
+                        'message': f'Weather conditions may impact your travel',
+                        'severity': sev,
+                        'details': weather_details,
+                        'source': 'weather'
+                    })
+                    break  # Only add one weather issue
+            
+            # 3. Check for road closures
+            if 'road closure' in obs_lower or 'lane closure' in obs_lower or 'סגירת כביש' in obs_lower:
                 issues.append({
-                    'message': 'Potential traffic delays detected',
+                    'message': 'Road closures reported in the area',
                     'severity': 'warning',
-                    'details': observation[:100],
-                    'source': 'agent_analysis'
+                    'details': observation[:300],
+                    'source': 'traffic'
                 })
-            weather_keywords = ['rain', 'storm', 'snow', 'precipitation', 'wind', 'flood', 'thunder', 'alert']
-            if any(kw in observation.lower() for kw in weather_keywords):
-                issues.append({
-                    'message': 'Weather concerns',
-                    'severity': 'info',
-                    'details': observation[:200],
-                    'source': 'weather'
-                })
+            
+            # 4. Check for traffic arrangements (often mentioned with games)
+            if 'traffic arrangement' in obs_lower or 'traffic delay' in obs_lower:
+                if not any(issue['source'] == 'local_events' for issue in issues):
+                    # Only add if we haven't already caught the game
+                    issues.append({
+                        'message': 'Traffic arrangements or delays expected in the area',
+                        'severity': 'info',
+                        'details': observation[:300],
+                        'source': 'traffic'
+                    })
         
-        return issues[:3]  # Limit to top 3 issues
+        # Deduplicate similar issues
+        seen_sources = set()
+        deduplicated = []
+        for issue in issues:
+            key = (issue['source'], issue['severity'])
+            if key not in seen_sources:
+                seen_sources.add(key)
+                deduplicated.append(issue)
+        
+        log_info(f"Hiccup agent: extracted {len(deduplicated)} issues from observations after max iterations")
+        return deduplicated[:3]  # Limit to top 3 issues
