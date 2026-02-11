@@ -137,7 +137,7 @@ def create_israeli_calendar() -> bytes:
 
     events_data = [
         {
-            'name': 'פגישה עסקית - Tel Aviv',
+            'name': 'פגישה עסקית',
             'days_offset': 3,
             'duration': 2,
             'hours_offset': 14,
@@ -145,7 +145,7 @@ def create_israeli_calendar() -> bytes:
             # No location - user needs to enter where in Tel Aviv
         },
         {
-            'name': 'אירוע משפחתי - Haifa',
+            'name': 'אירוע משפחתי',
             'days_offset': 6,
             'duration': 4,
             'hours_offset': 18,
@@ -186,10 +186,10 @@ def create_israeli_calendar() -> bytes:
             # No location - just says "Jerusalem", needs specific venue
         },
         {
-            'name': 'ארוחת ערב משפחתית - Haifa',
+            'name': 'ארוחת ערב משפחתית',
             'days_offset': 4,
             'duration': 2,
-            'hours_offset': 12,
+            'hours_offset': 20,
             'description': 'Family dinner with relatives'
             # No location - restaurant not specified in calendar
         }
