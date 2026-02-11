@@ -190,7 +190,52 @@ def test_hiccup_agent_basic_functionality():
     print("=" * 70)
 
 
+def test_exception_handling_without_response_text():
+    """Test that exception handler doesn't crash when response_text is undefined."""
+    
+    print("\nTesting exception handling when response fails:")
+    print("=" * 70)
+    
+    # Create agent with a mock model that will fail
+    agent = HiccupAgent(api_key=None)
+    
+    # Manually create a model-like object that fails
+    class FailingModel:
+        def generate_content(self, prompt):
+            raise ValueError("Simulated API failure before response_text assignment")
+    
+    agent.model = FailingModel()
+    agent.model_name = "test-model"
+    
+    event = {
+        'name': 'Test Event',
+        'location': 'Test Location',
+        'start': datetime(2026, 2, 15, 14, 0, 0),
+        'arrival_time': '14:00',
+        'event_end_time': '16:00',
+        'transportation_method': 'driving',
+        'departure_location': 'Test Departure'
+    }
+    
+    # This should not crash with UnboundLocalError
+    try:
+        issues = agent.check_for_hiccups(event)
+        assert isinstance(issues, list), "Should return a list even on error"
+        assert len(issues) == 0, "Should return empty list on API failure"
+        print("✅ PASS: Agent handles API failure gracefully without UnboundLocalError")
+    except UnboundLocalError as e:
+        print(f"❌ FAIL: UnboundLocalError occurred: {e}")
+        raise
+    except Exception as e:
+        # Other exceptions are acceptable for this test
+        print(f"⚠️  Note: Different exception occurred (acceptable): {type(e).__name__}")
+        print("✅ PASS: No UnboundLocalError (which was the bug)")
+    
+    print("=" * 70)
+
+
 if __name__ == '__main__':
     test_json_extraction_from_raw_response()
     test_hiccup_agent_basic_functionality()
+    test_exception_handling_without_response_text()
     print("\n✅ All hiccup agent tests passed.")

@@ -281,7 +281,16 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             
         except Exception as e:
             log_error(f"Hiccup agent reasoning error: {e}")
-            log_error(f"Raw response was: {response_text[:500]}")
+            # Only log response_text if it was successfully retrieved
+            try:
+                if 'response_text' in locals():
+                    log_error(f"Raw response was: {response_text[:500]}")
+                elif 'response' in locals():
+                    log_error(f"Response object exists but text extraction failed")
+                else:
+                    log_error(f"Failed to generate content from model")
+            except:
+                pass  # Don't let logging errors cascade
             # Fallback: finish with no issues
             return {"action": "FINISH", "thought": f"Error in reasoning: {str(e)}", "issues": []}
     
