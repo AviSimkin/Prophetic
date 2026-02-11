@@ -230,7 +230,17 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
         
         try:
             response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            
+            # Extract text safely - handle multi-part responses
+            try:
+                response_text = response.text.strip()
+            except ValueError:
+                # Multi-part response, extract text from parts
+                if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    parts = response.candidates[0].content.parts
+                    response_text = ''.join(part.text for part in parts if hasattr(part, 'text')).strip()
+                else:
+                    raise ValueError("Unable to extract text from response")
             
             # Log the reasoning call
             log_llm_call(
@@ -291,8 +301,18 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                     log_error(f"Failed to generate content from model")
             except:
                 pass  # Don't let logging errors cascade
-            # Fallback: finish with no issues
-            return {"action": "FINISH", "thought": f"Error in reasoning: {str(e)}", "issues": []}
+            
+            # Return an error issue so user knows there was a problem checking
+            return {
+                "action": "FINISH", 
+                "thought": f"Error in reasoning: {str(e)}", 
+                "issues": [{
+                    "message": "Unable to complete hiccup check due to technical issue",
+                    "severity": "warning",
+                    "details": "Please verify travel conditions independently. The automated check encountered an error.",
+                    "source": "system_error"
+                }]
+            }
     
     def _execute_action(self, thought_action: Dict[str, Any], event: dict) -> str:
         """Execute the chosen action using the appropriate tool."""
