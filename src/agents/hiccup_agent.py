@@ -7,14 +7,31 @@ import json
 import google.generativeai as genai
 from src.prophetic_logger import log_llm_call, log_error, log_info
 
+# Major Israeli stadiums that cause significant traffic/parking disruption during events
+ISRAELI_STADIUMS = {
+    "Sammy Ofer Stadium": {"city": "Haifa", "address": "Sammy Ofer Stadium, Haifa, Israel", "lat": 32.7940, "lon": 35.0420, "teams": ["Maccabi Haifa", "Hapoel Haifa"]},
+    "Bloomfield Stadium": {"city": "Tel Aviv-Jaffa", "address": "Bloomfield Stadium, Tel Aviv, Israel", "lat": 32.0558, "lon": 34.7644, "teams": ["Hapoel Tel Aviv", "Maccabi Tel Aviv", "Bnei Yehuda"]},
+    "Teddy Stadium": {"city": "Jerusalem", "address": "Teddy Stadium, Jerusalem, Israel", "lat": 31.7513, "lon": 35.1903, "teams": ["Beitar Jerusalem", "Hapoel Jerusalem"]},
+    "Turner Stadium": {"city": "Beer Sheva", "address": "Turner Stadium, Beer Sheva, Israel", "lat": 31.2644, "lon": 34.7914, "teams": ["Hapoel Beer Sheva"]},
+    "Netanya Stadium": {"city": "Netanya", "address": "Netanya Stadium, Netanya, Israel", "lat": 32.3215, "lon": 34.8530, "teams": ["Maccabi Netanya", "Hapoel Netanya"]},
+    "HaMoshava Stadium": {"city": "Petah Tikva", "address": "HaMoshava Stadium, Petah Tikva, Israel", "lat": 32.0893, "lon": 34.8878, "teams": ["Hapoel Petah Tikva", "Maccabi Petah Tikva"]},
+    "Doha Stadium": {"city": "Haifa", "address": "Doha Stadium, Haifa, Israel", "lat": 32.7895, "lon": 35.0095, "teams": ["Hapoel Haifa"]},
+    "Ramat Gan Stadium": {"city": "Ramat Gan", "address": "Ramat Gan Stadium, Ramat Gan, Israel", "lat": 32.0927, "lon": 34.8156, "teams": ["Israel National Team"]},
+}
+
+# Approximate distance threshold in km for stadium proximity alerts
+STADIUM_PROXIMITY_KM = 8.0
+
 
 class HiccupAgent:
     """
     ReAct agent that reasons about potential travel hiccups and uses tools to verify.
     
     Tools available:
-    - web_search: Search the web for current information
+    - web_search: Search the web for current information (events, road closures)
     - maps_directions: Get Google Maps directions and traffic info
+    - weather_forecast: Get weather forecast from WeatherAPI.com
+    - check_stadium_proximity: Check if event location is near Israeli stadiums
     """
     
     def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash-lite"):
@@ -63,23 +80,16 @@ class HiccupAgent:
             return []
         
         date_str = start_dt.strftime('%B %d, %Y')
-        time_str = start_dt.strftime('%H:%M')
         day_of_week = start_dt.strftime('%A')
         
-        # Build context for agent - only show arrival_time if different from event start time
+        # Build context for agent - use arrival_time and event_end_time only (no raw start time)
         context = f"""Event: {event_name}
 Location: {location}
 Date: {date_str} ({day_of_week})
-Time: {time_str}
+Arrival time: {arrival_time or 'Not specified'}
+Event ends: {event_end_time or 'Not specified'}
 Transportation: {transport}
 Departure from: {departure_location or 'Not specified'}"""
-        
-        # Only add arrival time if it differs from event start time
-        if arrival_time and arrival_time != time_str:
-            context += f"\nArrival time: {arrival_time}"
-        
-        if event_end_time:
-            context += f"\nEvent ends: {event_end_time}"
         
         log_info(f"Hiccup agent: starting ReAct loop for {event_name}")
         
@@ -128,22 +138,25 @@ Departure from: {departure_location or 'Not specified'}"""
 {context}{history_text}
 
 Available tools:
-1. web_search(query: str) - Search the web for current information (weather, events, closures, etc.)
-2. maps_directions(origin: str, destination: str, arrival_time: str) - Get Google Maps directions and check for traffic/delays
-3. FINISH(issues: list) - When you have gathered enough information, finish and return the list of issues
+1. web_search(query: str) - Search the web for current information (events, road closures, etc.). Requires a search query as action_input. Do NOT use this for weather - use weather_forecast instead.
+2. maps_directions() - Get Google Maps directions and check for traffic/delays. Uses the event's departure location, destination, and arrival time automatically - no action_input needed.
+3. check_stadium_proximity() - Check if the event location is near any major Israeli stadium. Uses the event location automatically - no action_input needed. Returns nearby stadiums and their home teams. USE THIS FIRST to determine if stadium-related searches are needed.
+4. weather_forecast() - Get accurate weather forecast for the event location and date from WeatherAPI.com. Uses the event location and date automatically - no action_input needed. Returns temperature, rain/snow chance, wind, precipitation, hourly forecast around arrival time, and weather alerts. ALWAYS use this for weather checks instead of web_search.
+5. FINISH(issues: list) - When you have gathered enough information, finish and return the list of issues
 
 Chain of Thought Instructions:
-1. THINK about what information you need to verify potential hiccups
-2. CHOOSE an action to gather that information (vary your approach - don't just search repeatedly)
-3. After getting results, ANALYZE if you have enough information
-4. Use DIFFERENT tools for different checks (web_search for events/weather, maps_directions for traffic)
-5. After 2-3 checks, make a decision - don't keep searching indefinitely
-6. When confident OR if checks show normal conditions, use FINISH with your findings
+1. FIRST use check_stadium_proximity to check if any major stadiums are nearby
+2. Use weather_forecast to get accurate weather data for the event date - NEVER use web_search for weather
+3. If stadiums are found nearby, use web_search to look for specific games/events at those stadiums on the event date
+4. Use web_search for road closures near the event location and date
+5. Use maps_directions if you need to verify travel time or traffic conditions
+6. After 2-4 checks, make a decision and FINISH
+7. When confident OR if checks show normal conditions, use FINISH with your findings
 
 Focus on:
 - Weather conditions that affect travel
-- Traffic delays or road closures
-- Major events (especially big soccer/football games) NEARBY that cause congestion and parking issues
+- Traffic delays or road closures (search specifically: "road closures [city] [date]" or "סגירת כבישים [city]")
+- Major events at NEARBY STADIUMS (soccer/football games) - use check_stadium_proximity first, then search for specific games by team name and date
 - Public transit disruptions (if using public transport)
 - Parking availability issues (less important if user walks)
 
@@ -161,22 +174,34 @@ Frame as personal consequences the user will experience, not neutral facts.
 Respond in JSON format:
 {{
     "thought": "reasoning about what to check next or why finishing",
-    "action": "web_search|maps_directions|FINISH",
+    "action": "web_search|maps_directions|check_stadium_proximity|weather_forecast|FINISH",
     "action_input": "the query or parameters for the tool",
     "issues": [] // only if action is FINISH
 }}
 
 Example responses:
 {{
-    "thought": "Need to check weather conditions for the event date",
-    "action": "web_search",
-    "action_input": "weather forecast Tel Aviv February 2 2026"
+    "thought": "First, I should check if any major stadiums are near the event location",
+    "action": "check_stadium_proximity",
+    "action_input": ""
 }}
 
 {{
-    "thought": "Need to check for major soccer games nearby on event date",
+    "thought": "Bloomfield Stadium is 1.2km away. I need to check if Hapoel Tel Aviv or Maccabi Tel Aviv have a game on the event date",
     "action": "web_search",
-    "action_input": "soccer football games February 2 2026 Tel Aviv Haifa Israel stadiums"
+    "action_input": "Hapoel Tel Aviv Maccabi Tel Aviv game February 2 2026"
+}}
+
+{{
+    "thought": "Need to check weather conditions for the event date",
+    "action": "weather_forecast",
+    "action_input": ""
+}}
+
+{{
+    "thought": "Need to check for road closures near the event location",
+    "action": "web_search",
+    "action_input": "road closures Tel Aviv February 2 2026"
 }}
 
 {{
@@ -260,6 +285,10 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             return self._tool_web_search(action_input)
         elif action == 'maps_directions':
             return self._tool_maps_directions(action_input, event)
+        elif action == 'check_stadium_proximity':
+            return self._tool_check_stadium_proximity(event)
+        elif action == 'weather_forecast':
+            return self._tool_weather_forecast(event)
         else:
             return "Unknown action"
     
@@ -387,6 +416,284 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             log_error(f"Maps directions error: {e}")
             return f"Directions lookup failed: {str(e)}"
     
+    def _tool_weather_forecast(self, event: dict) -> str:
+        """Tool: Get weather forecast for the event location and date using WeatherAPI.com."""
+        location = event.get('location', '')
+        start_dt = event.get('start')
+        arrival_time = event.get('arrival_time', '')
+        
+        log_info(f"Hiccup agent: weather_forecast tool called for {location} on {start_dt}")
+        
+        if not location or not start_dt:
+            return "Missing location or date for weather forecast"
+        
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        weather_key = os.getenv('OPEN_WEATHER')
+        
+        if not weather_key:
+            log_info("No WeatherAPI key, falling back to web search for weather")
+            return "Weather API key not configured. Use web_search to check weather instead."
+        
+        try:
+            import requests
+            from datetime import datetime, timedelta
+            
+            event_date = start_dt.date() if hasattr(start_dt, 'date') else start_dt
+            today = datetime.now().date()
+            days_ahead = (event_date - today).days
+            
+            # Choose the right API endpoint based on how far ahead the event is
+            if days_ahead < 0:
+                return "Event date is in the past, weather forecast not applicable."
+            elif days_ahead <= 14:
+                # Use forecast API (up to 14 days)
+                url = 'http://api.weatherapi.com/v1/forecast.json'
+                params = {
+                    'key': weather_key,
+                    'q': location,
+                    'days': min(days_ahead + 1, 14),
+                    'alerts': 'yes',
+                }
+            elif days_ahead <= 300:
+                # Use future API (14-300 days ahead)
+                url = 'http://api.weatherapi.com/v1/future.json'
+                params = {
+                    'key': weather_key,
+                    'q': location,
+                    'dt': event_date.strftime('%Y-%m-%d'),
+                }
+            else:
+                return f"Event is {days_ahead} days away - too far for weather forecast (max 300 days)."
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            if response.status_code != 200:
+                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                error_msg = error_data.get('error', {}).get('message', f'HTTP {response.status_code}')
+                log_error(f"WeatherAPI error: {error_msg}")
+                return f"Weather API error: {error_msg}. Use web_search as fallback."
+            
+            data = response.json()
+            forecast_days = data.get('forecast', {}).get('forecastday', [])
+            
+            # Find the forecast for the event date
+            target_date_str = event_date.strftime('%Y-%m-%d')
+            event_forecast = None
+            for fd in forecast_days:
+                if fd.get('date') == target_date_str:
+                    event_forecast = fd
+                    break
+            
+            if not event_forecast:
+                # Use the last available day if exact date not found
+                if forecast_days:
+                    event_forecast = forecast_days[-1]
+                else:
+                    return "No forecast data available for the event date."
+            
+            # Extract day summary
+            day = event_forecast.get('day', {})
+            condition = day.get('condition', {}).get('text', 'Unknown')
+            max_temp = day.get('maxtemp_c', 'N/A')
+            min_temp = day.get('mintemp_c', 'N/A')
+            rain_chance = day.get('daily_chance_of_rain', 0)
+            snow_chance = day.get('daily_chance_of_snow', 0)
+            max_wind = day.get('maxwind_kph', 0)
+            total_precip = day.get('totalprecip_mm', 0)
+            avg_humidity = day.get('avghumidity', 'N/A')
+            
+            summary = f"🌤️ Weather for {location} on {target_date_str}:\n"
+            summary += f"Condition: {condition}\n"
+            summary += f"Temperature: {min_temp}°C - {max_temp}°C\n"
+            summary += f"Rain chance: {rain_chance}%\n"
+            if snow_chance > 0:
+                summary += f"Snow chance: {snow_chance}%\n"
+            summary += f"Max wind: {max_wind} km/h\n"
+            summary += f"Total precipitation: {total_precip} mm\n"
+            summary += f"Humidity: {avg_humidity}%\n"
+            
+            # Extract hourly forecast around arrival time if available
+            hours = event_forecast.get('hour', [])
+            if hours and arrival_time:
+                try:
+                    arrival_hour = int(arrival_time.split(':')[0])
+                    # Show weather for 2 hours before through arrival
+                    relevant_hours = [h for h in hours if arrival_hour - 2 <= int(h['time'].split(' ')[1].split(':')[0]) <= arrival_hour + 1]
+                    if relevant_hours:
+                        summary += f"\nHourly forecast around arrival ({arrival_time}):\n"
+                        for h in relevant_hours:
+                            h_time = h['time'].split(' ')[1]
+                            h_cond = h.get('condition', {}).get('text', '')
+                            h_temp = h.get('temp_c', '')
+                            h_rain = h.get('chance_of_rain', 0)
+                            h_wind = h.get('wind_kph', 0)
+                            summary += f"  {h_time}: {h_cond}, {h_temp}°C, rain {h_rain}%, wind {h_wind}km/h\n"
+                except (ValueError, IndexError):
+                    pass  # Skip hourly if arrival_time can't be parsed
+            
+            # Check weather alerts
+            alerts = data.get('alerts', {}).get('alert', [])
+            if alerts:
+                summary += f"\n⚠️ WEATHER ALERTS ({len(alerts)}):\n"
+                for alert in alerts[:3]:  # Limit to 3 alerts
+                    headline = alert.get('headline', 'Unknown alert')
+                    severity = alert.get('severity', 'Unknown')
+                    event_type = alert.get('event', '')
+                    summary += f"  - [{severity}] {headline}\n"
+                    if event_type:
+                        summary += f"    Event: {event_type}\n"
+            
+            return summary
+            
+        except Exception as e:
+            log_error(f"Weather forecast error: {e}")
+            return f"Weather forecast failed: {str(e)}. Use web_search as fallback."
+    
+    def _tool_check_stadium_proximity(self, event: dict) -> str:
+        """Tool: Check if event location is near any major Israeli stadium using SerpAPI Google Maps."""
+        location = event.get('location', '')
+        log_info(f"Hiccup agent: check_stadium_proximity tool called for location: {location}")
+        
+        if not location:
+            return "No event location provided for proximity check"
+        
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        serpapi_key = os.getenv('SERPAPI_KEY')
+        
+        if not serpapi_key:
+            # Fallback: simple city-name matching
+            return self._check_stadium_proximity_fallback(location)
+        
+        try:
+            import requests
+            
+            # First, geocode the event location using SerpAPI Google Maps
+            params = {
+                'api_key': serpapi_key,
+                'engine': 'google_maps',
+                'q': location,
+                'type': 'search',
+                'hl': 'en',
+            }
+            
+            response = requests.get(
+                'https://serpapi.com/search',
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code != 200:
+                log_error(f"SerpAPI geocode error: {response.status_code}")
+                return self._check_stadium_proximity_fallback(location)
+            
+            data = response.json()
+            local_results = data.get('local_results', [])
+            
+            # Try to get coordinates from local results or place results
+            event_lat, event_lon = None, None
+            
+            if local_results:
+                coords = local_results[0].get('gps_coordinates', {})
+                event_lat = coords.get('latitude')
+                event_lon = coords.get('longitude')
+            
+            # Also check place_results for single-result queries
+            place_results = data.get('place_results', {})
+            if not event_lat and place_results:
+                coords = place_results.get('gps_coordinates', {})
+                event_lat = coords.get('latitude')
+                event_lon = coords.get('longitude')
+            
+            if not event_lat or not event_lon:
+                log_info("Could not geocode event location, using city-name fallback")
+                return self._check_stadium_proximity_fallback(location)
+            
+            # Special case: Haifa events should always check both Haifa stadiums
+            # (Sammy Ofer and Doha) since games significantly affect city-wide traffic
+            location_lower = location.lower()
+            haifa_keywords = ['haifa', 'haïfa', 'heifa', 'heyfa', 'heiffa', 'חיפה']
+            is_haifa_location = any(kw in location_lower for kw in haifa_keywords)
+            
+            # Calculate distances to all stadiums using Haversine formula
+            nearby_stadiums = []
+            import math
+            
+            for stadium_name, stadium_info in ISRAELI_STADIUMS.items():
+                dist = self._haversine_distance(
+                    event_lat, event_lon,
+                    stadium_info['lat'], stadium_info['lon']
+                )
+                # Include stadium if within threshold OR if this is a Haifa event and it's a Haifa stadium
+                is_haifa_stadium = stadium_info['city'] in ['Haifa', 'חיפה']
+                should_include = dist <= STADIUM_PROXIMITY_KM or (is_haifa_location and is_haifa_stadium)
+                
+                if should_include:
+                    nearby_stadiums.append({
+                        'name': stadium_name,
+                        'city': stadium_info['city'],
+                        'distance_km': round(dist, 1),
+                        'teams': stadium_info['teams']
+                    })
+            
+            if not nearby_stadiums:
+                return f"No major stadiums found within {STADIUM_PROXIMITY_KM}km of {location}. No stadium-related traffic concerns."
+            
+            # Format results
+            result = f"⚠️ Found {len(nearby_stadiums)} stadium(s) near {location}:\n"
+            for s in nearby_stadiums:
+                teams_str = ', '.join(s['teams'])
+                result += f"- {s['name']} ({s['city']}) - {s['distance_km']}km away. Home teams: {teams_str}\n"
+            result += "\nYou SHOULD now search for games at these stadiums on the event date. "
+            result += "Use web_search with query like: '[team name] game [date]' or '[stadium name] event [date]'."
+            result += "\nAlso search for road closures near the event location."
+            return result
+            
+        except Exception as e:
+            log_error(f"Stadium proximity check error: {e}")
+            return self._check_stadium_proximity_fallback(location)
+    
+    @staticmethod
+    def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate the distance between two GPS coordinates in kilometers."""
+        import math
+        R = 6371  # Earth's radius in km
+        
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (math.sin(dlat / 2) ** 2 +
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+             math.sin(dlon / 2) ** 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
+    
+    def _check_stadium_proximity_fallback(self, location: str) -> str:
+        """Fallback: check stadium proximity by matching city names in the location string."""
+        location_lower = location.lower()
+        nearby = []
+        
+        for stadium_name, info in ISRAELI_STADIUMS.items():
+            city_lower = info['city'].lower()
+            if city_lower in location_lower:
+                nearby.append({
+                    'name': stadium_name,
+                    'city': info['city'],
+                    'teams': info['teams']
+                })
+        
+        if not nearby:
+            return f"No major stadiums identified near '{location}' (city-name fallback). No stadium-related traffic concerns."
+        
+        result = f"Found {len(nearby)} stadium(s) in the same city as the event (city-name match):\n"
+        for s in nearby:
+            teams_str = ', '.join(s['teams'])
+            result += f"- {s['name']} ({s['city']}). Home teams: {teams_str}\n"
+        result += "\nYou SHOULD now search for games at these stadiums on the event date."
+        return result
+    
     def _extract_final_issues(self) -> List[Dict[str, str]]:
         """Extract issues from action history when max iterations reached."""
         # Look through observations for any mentioned issues
@@ -402,11 +709,12 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                     'details': observation[:100],
                     'source': 'agent_analysis'
                 })
-            if 'rain' in observation.lower() or 'storm' in observation.lower():
+            weather_keywords = ['rain', 'storm', 'snow', 'precipitation', 'wind', 'flood', 'thunder', 'alert']
+            if any(kw in observation.lower() for kw in weather_keywords):
                 issues.append({
                     'message': 'Weather concerns',
                     'severity': 'info',
-                    'details': observation[:100],
+                    'details': observation[:200],
                     'source': 'weather'
                 })
         

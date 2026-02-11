@@ -186,11 +186,11 @@ def create_israeli_calendar() -> bytes:
             # No location - just says "Jerusalem", needs specific venue
         },
         {
-            'name': 'ארוחת צהריים - Haifa',
+            'name': 'ארוחת ערב משפחתית - Haifa',
             'days_offset': 4,
             'duration': 2,
             'hours_offset': 12,
-            'description': 'Lunch meeting with potential investors'
+            'description': 'Family dinner with relatives'
             # No location - restaurant not specified in calendar
         }
     ]
