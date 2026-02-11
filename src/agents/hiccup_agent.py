@@ -249,7 +249,16 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             if '```json' in text:
                 text = text.split('```json')[1].split('```')[0].strip()
             elif '```' in text:
-                text = text.split('```')[1].split('```')[0].strip()
+                # Extract from generic code block, but verify it contains JSON
+                parts = text.split('```')
+                if len(parts) >= 3:
+                    code_block = parts[1].strip()
+                    # Only use code block if it looks like JSON (starts with {)
+                    if code_block.startswith('{'):
+                        text = code_block
+                    # Otherwise, check if JSON exists after the code block
+                    elif '{' in parts[2]:
+                        text = parts[2]
             
             # Find JSON object boundaries
             if '{' in text:
