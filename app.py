@@ -595,6 +595,12 @@ def main():
                             # Already dismissed, skip
                             continue
                         
+                        # If user ignored details, don't run hiccup check - just suppress
+                        if details_ignored:
+                            _record_suppression(event_id, event['name'], event['start'], 
+                                              "User chose to ignore detail request", 'details_ignored_by_user')
+                            continue
+                        
                         # Check if we have cached issues or need to run check
                         location = details.get('location') or event.get('location', '')
                         cache_key = f"{event_id}_{location}_{event['start'].strftime('%Y%m%d')}_{details.get('transportation_method','na')}"
