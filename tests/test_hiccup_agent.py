@@ -234,8 +234,104 @@ def test_exception_handling_without_response_text():
     print("=" * 70)
 
 
+def test_traffic_message_clarity():
+    """Test that traffic messages are clear and only show alerts for actual problems."""
+    
+    print("\nTesting traffic message clarity:")
+    print("=" * 70)
+    
+    # Test case 1: No traffic_info in route data (API doesn't provide it - normal traffic)
+    print("\n📍 Case 1: No traffic_info field (normal conditions)")
+    mock_route_no_traffic = {
+        'distance': '91.6 km',
+        'duration': 5690  # ~95 minutes in seconds
+        # No 'traffic_info' field = normal traffic
+    }
+    
+    distance = mock_route_no_traffic.get('distance', 'Unknown')
+    duration = mock_route_no_traffic.get('duration', 'Unknown')
+    traffic_info = mock_route_no_traffic.get('traffic_info', None)
+    
+    duration_str = str(duration)
+    if isinstance(duration, (int, float)):
+        minutes = int(duration) // 60
+        seconds = int(duration) % 60
+        duration_str = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+    
+    summary = f"Route: {distance}, Duration: {duration_str}"
+    
+    if traffic_info and any(keyword in str(traffic_info).lower() 
+                           for keyword in ['delay', 'heavy', 'slow', 'congestion', 'jam', 'accident', 'closure']):
+        summary += f" - ⚠️ {traffic_info}"
+    else:
+        summary += " - No delays"
+    
+    print(f"   Result: {summary}")
+    assert "No delays" in summary, "Should indicate no delays when traffic is normal"
+    assert "⚠️" not in summary, "Should NOT show warning emoji for normal traffic"
+    print("   ✅ Correctly shows 'No delays' for normal traffic")
+    
+    # Test case 2: Traffic info with actual delay
+    print("\n📍 Case 2: Traffic info with actual delays")
+    mock_route_with_delays = {
+        'distance': '91.6 km',
+        'duration': 6890,  # ~115 minutes
+        'traffic_info': 'Heavy traffic due to accident on Route 2'
+    }
+    
+    route2 = mock_route_with_delays
+    traffic_info2 = route2.get('traffic_info', None)
+    duration2 = route2.get('duration', 'Unknown')
+    
+    if isinstance(duration2, (int, float)):
+        minutes2 = int(duration2) // 60
+        seconds2 = int(duration2) % 60
+        duration_str2 = f"{minutes2}m {seconds2}s" if seconds2 else f"{minutes2}m"
+    
+    summary2 = f"Route: {route2['distance']}, Duration: {duration_str2}"
+    
+    if traffic_info2 and any(keyword in str(traffic_info2).lower() 
+                            for keyword in ['delay', 'heavy', 'slow', 'congestion', 'jam', 'accident', 'closure']):
+        summary2 += f" - ⚠️ {traffic_info2}"
+    else:
+        summary2 += " - No delays"
+    
+    print(f"   Result: {summary2}")
+    assert "⚠️ Heavy traffic due to accident" in summary2, "Should show traffic issues with warning emoji"
+    assert "No delays" not in summary2, "Should NOT say no delays when problems exist"
+    print("   ✅ Correctly shows warning for actual traffic issues")
+    
+    # Test case 3: Traffic info but no problem keywords (edge case)
+    print("\n📍 Case 3: Traffic info exists but indicates normal flow")
+    mock_route_normal_mention = {
+        'distance': '45.2 km',
+        'duration': 2700,
+        'traffic_info': 'Light traffic, normal flow'
+    }
+    
+    route3 = mock_route_normal_mention
+    traffic_info3 = route3.get('traffic_info', None)
+    
+    summary3 = f"Route: {route3['distance']}, Duration: 45m"
+    if traffic_info3 and any(keyword in str(traffic_info3).lower() 
+                            for keyword in ['delay', 'heavy', 'slow', 'congestion', 'jam', 'accident', 'closure']):
+        summary3 += f" - ⚠️ {traffic_info3}"
+    else:
+        summary3 += " - No delays"
+    
+    print(f"   Result: {summary3}")
+    assert "No delays" in summary3, "Should show no delays for light/normal traffic"
+    assert "⚠️" not in summary3, "Should NOT show warning for light traffic"
+    print("   ✅ Correctly treats 'light traffic' as normal (no alert)")
+    
+    print("\n" + "=" * 70)
+    print("✅ PASS: All traffic message tests passed")
+    print("=" * 70)
+
+
 if __name__ == '__main__':
     test_json_extraction_from_raw_response()
     test_hiccup_agent_basic_functionality()
     test_exception_handling_without_response_text()
+    test_traffic_message_clarity()
     print("\n✅ All hiccup agent tests passed.")

@@ -418,10 +418,16 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                         pass  # Keep original format if can't parse
                     
                     summary = f"Route: {distance}, Duration: {duration_str}"
-                    if 'traffic' in str(traffic_info).lower() or 'delay' in str(traffic_info).lower():
-                        summary += f" - Traffic issues: {traffic_info}"
+                    
+                    # Only report traffic if there's an actual issue
+                    # Check if traffic_info contains problem keywords
+                    traffic_info = route.get('traffic_info', None)
+                    if traffic_info and any(keyword in str(traffic_info).lower() 
+                                           for keyword in ['delay', 'heavy', 'slow', 'congestion', 'jam', 'accident', 'closure']):
+                        summary += f" - ⚠️ {traffic_info}"
                     else:
-                        summary += " - Normal traffic conditions"
+                        # No traffic issues detected - duration is normal
+                        summary += " - No delays"
                     
                     return summary
                 else:
