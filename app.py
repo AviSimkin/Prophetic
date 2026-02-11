@@ -843,23 +843,12 @@ def main():
                                 
                                 # Display validation priority if available
                                 if validation_result:
-                                    priority_colors = {
-                                        'low': '🟢',
-                                        'medium': '🟡', 
-                                        'high': '🔴'
-                                    }
-                                    priority_icon = priority_colors.get(validation_result.priority, '⚪')
-                                    st.caption(f"{priority_icon} Priority: {validation_result.priority.upper()}")
-                                    
                                     # Alert user if validator found problems
                                     if validation_result.removed_count > 0:
                                         st.warning(f"⚠️ Validator removed {validation_result.removed_count} potentially incorrect alert(s). Please verify remaining warnings.")
                                     
                                     if not validation_result.is_valid and issues:
                                         st.warning("⚠️ Alert validation flagged potential issues - please verify this information independently.")
-                                    
-                                    if validation_result.validation_notes:
-                                        st.caption(f"ℹ️ {validation_result.validation_notes}")
                                 
                                 # Display issues (we know there are issues because we checked before showing)
                                 if issues:
