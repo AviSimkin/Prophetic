@@ -186,7 +186,7 @@ Few-shot examples:
    Alert: "Light drizzle possible" (severity: info)
    → {{"is_valid": false, "priority": "low", "event_importance": "low", "issues_to_keep": [], "removed_count": 1, "validation_notes": "Minor weather for casual event", "llm_guidance": "Don't report routine weather for informal meetings"}}
 
-3. Event: "Business meeting", Date: "2026-03-01 10:00", Location: "Office Park"
+3. Event: "Business•	Notification fatigue management  "2026-03-01 10:00", Location: "Office Park"
    Inferred importance: high (work meeting)
    Alert: "Major soccer game at nearby stadium causing traffic delays" (severity: critical)
    → {{"is_valid": true, "priority": "high", "event_importance": "high", "issues_to_keep": ["Major soccer game at nearby stadium causing traffic delays"], "validation_notes": "Verified event-specific traffic impact", "llm_guidance": "Good - specific local event with travel impact"}}
@@ -246,7 +246,25 @@ Respond in JSON:
             data = json.loads(text)
             
             # Filter issues based on LLM's decision
-            kept_messages = set(data.get('issues_to_keep', []))
+            # LLM returns formatted strings like "[CRITICAL] message (Source: source)"
+            # We need to extract just the message part to match against issue.message
+            kept_messages = set()
+            for kept_item in data.get('issues_to_keep', []):
+                # Extract message from formatted string: "[SEVERITY] message (Source: source)"
+                # Remove severity prefix if present
+                msg = kept_item
+                if msg.startswith('['):
+                    # Find the closing bracket and remove severity
+                    bracket_end = msg.find(']')
+                    if bracket_end != -1:
+                        msg = msg[bracket_end + 1:].strip()
+                
+                # Remove source suffix if present
+                if '(Source:' in msg:
+                    msg = msg[:msg.rfind('(Source:')].strip()
+                
+                kept_messages.add(msg)
+            
             filtered_issues = [
                 issue for issue in issues 
                 if issue.message in kept_messages

@@ -141,16 +141,16 @@ Available tools:
 1. web_search(query: str) - Search the web for current information (events, road closures, etc.). Requires a search query as action_input. Do NOT use this for weather - use weather_forecast instead.
 2. maps_directions() - Get Google Maps directions and check for traffic/delays. Uses the event's departure location, destination, and arrival time automatically - no action_input needed.
 3. check_stadium_proximity() - Check if the event location is near any major Israeli stadium. Uses the event location automatically - no action_input needed. Returns nearby stadiums and their home teams. USE THIS FIRST to determine if stadium-related searches are needed.
-4. weather_forecast() - Get accurate weather forecast for the event location and date from WeatherAPI.com. Uses the event location and date automatically - no action_input needed. Returns temperature, rain/snow chance, wind, precipitation, hourly forecast around arrival time, and weather alerts. ALWAYS use this for weather checks instead of web_search.
+4. weather_forecast(city: str) - Get accurate weather forecast from WeatherAPI.com. Requires the CITY NAME ONLY as action_input (e.g., "Haifa", "Tel Aviv", "חיפה"). Extract the city from the event location (ignore mall/venue names). Returns temperature, rain/snow chance, wind, precipitation, hourly forecast around arrival time, and weather alerts. ALWAYS use this for weather checks instead of web_search.
 5. FINISH(issues: list) - When you have gathered enough information, finish and return the list of issues
 
 Chain of Thought Instructions:
 1. FIRST use check_stadium_proximity to check if any major stadiums are nearby
-2. Use weather_forecast to get accurate weather data for the event date - NEVER use web_search for weather
-3. If stadiums are found nearby, use web_search to look for specific games/events at those stadiums on the event date
+2. Use weather_forecast with CITY NAME ONLY (extract city from event location - e.g., "חיפה" from "קניון עזריאלי חיפה")
+3. If stadiums are found nearby, use web_search with SPECIFIC queries: "[Team name] vs [Opponent] [Month] [Year]" or "Israeli Premier League [Team] [date]". Be persistent - try multiple search variations if first search doesn't find specific games.
 4. Use web_search for road closures near the event location and date
 5. Use maps_directions if you need to verify travel time or traffic conditions
-6. After 2-4 checks, make a decision and FINISH
+6. After 3-5 checks, make a decision and FINISH
 7. When confident OR if checks show normal conditions, use FINISH with your findings
 
 Focus on:
@@ -193,9 +193,9 @@ Example responses:
 }}
 
 {{
-    "thought": "Need to check weather conditions for the event date",
+    "thought": "Need to check weather conditions for the event date. The event is at Azrieli Mall Haifa, so the city is Haifa",
     "action": "weather_forecast",
-    "action_input": ""
+    "action_input": "Haifa"
 }}
 
 {{
@@ -290,7 +290,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             return thought_action
             
         except Exception as e:
-            log_error(f"Hiccup agent reasoning error: {e}")
+            log_error(f"Hiccup agent reasoning error on iteration {iteration + 1}: {e}")
             # Only log response_text if it was successfully retrieved
             try:
                 if 'response_text' in locals():
@@ -302,10 +302,22 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             except:
                 pass  # Don't let logging errors cascade
             
-            # Return an error issue so user knows there was a problem checking
+            # Don't give up - try to extract issues from observations collected so far
+            log_info(f"Attempting to extract issues from {len(observations)} observations despite error")
+            fallback_issues = self._extract_final_issues(observations, context)
+            
+            if fallback_issues:
+                # Successfully extracted issues from observations
+                return {
+                    "action": "FINISH",
+                    "thought": f"Extracted issues from observations despite iteration error",
+                    "issues": fallback_issues
+                }
+            
+            # Only return error if we truly found nothing
             return {
                 "action": "FINISH", 
-                "thought": f"Error in reasoning: {str(e)}", 
+                "thought": f"Error in reasoning and no issues found in observations: {str(e)}", 
                 "issues": [{
                     "message": "Unable to complete hiccup check due to technical issue",
                     "severity": "warning",
@@ -326,7 +338,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
         elif action == 'check_stadium_proximity':
             return self._tool_check_stadium_proximity(event)
         elif action == 'weather_forecast':
-            return self._tool_weather_forecast(event)
+            return self._tool_weather_forecast(action_input, event)
         else:
             return "Unknown action"
     
@@ -460,16 +472,15 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             log_error(f"Maps directions error: {e}")
             return f"Directions lookup failed: {str(e)}"
     
-    def _tool_weather_forecast(self, event: dict) -> str:
-        """Tool: Get weather forecast for the event location and date using WeatherAPI.com."""
-        location = event.get('location', '')
+    def _tool_weather_forecast(self, city: str, event: dict) -> str:
+        """Tool: Get weather forecast for the specified city using WeatherAPI.com."""
         start_dt = event.get('start')
         arrival_time = event.get('arrival_time', '')
         
-        log_info(f"Hiccup agent: weather_forecast tool called for {location} on {start_dt}")
+        log_info(f"Hiccup agent: weather_forecast tool called for {city} on {start_dt}")
         
-        if not location or not start_dt:
-            return "Missing location or date for weather forecast"
+        if not city or not start_dt:
+            return "Missing city name or date for weather forecast"
         
         import os
         from dotenv import load_dotenv
@@ -496,7 +507,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                 url = 'http://api.weatherapi.com/v1/forecast.json'
                 params = {
                     'key': weather_key,
-                    'q': location,
+                    'q': city,
                     'days': min(days_ahead + 1, 14),
                     'alerts': 'yes',
                 }
@@ -505,7 +516,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                 url = 'http://api.weatherapi.com/v1/future.json'
                 params = {
                     'key': weather_key,
-                    'q': location,
+                    'q': city,
                     'dt': event_date.strftime('%Y-%m-%d'),
                 }
             else:
@@ -548,7 +559,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
             total_precip = day.get('totalprecip_mm', 0)
             avg_humidity = day.get('avghumidity', 'N/A')
             
-            summary = f"🌤️ Weather for {location} on {target_date_str}:\n"
+            summary = f"🌤️ Weather for {city} on {target_date_str}:\n"
             summary += f"Condition: {condition}\n"
             summary += f"Temperature: {min_temp}°C - {max_temp}°C\n"
             summary += f"Rain chance: {rain_chance}%\n"
@@ -772,7 +783,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                         severity = 'critical'
                     
                     issues.append({
-                        'message': 'A major soccer game at nearby stadium could cause traffic delays and parking issues',
+                        'message': 'Major soccer game nearby - stadium traffic could delay your arrival and leave you searching for parking',
                         'severity': severity,
                         'details': game_details,
                         'source': 'local_events'
@@ -795,7 +806,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                     
                     # Try to find temperature, rain %, etc.
                     issues.append({
-                        'message': f'Weather conditions may impact your travel',
+                        'message': f'Bad weather may leave you soaked or delayed without proper preparation',
                         'severity': sev,
                         'details': weather_details,
                         'source': 'weather'
@@ -816,7 +827,7 @@ IMPORTANT: You are on iteration {iteration + 1} of {max_iterations}. After a few
                 if not any(issue['source'] == 'local_events' for issue in issues):
                     # Only add if we haven't already caught the game
                     issues.append({
-                        'message': 'Traffic arrangements or delays expected in the area',
+                        'message': 'Traffic arrangements or delays expected in the area, you maybe late if you don\'t take them into account',
                         'severity': 'info',
                         'details': observation[:300],
                         'source': 'traffic'
