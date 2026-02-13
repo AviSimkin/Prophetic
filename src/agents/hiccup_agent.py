@@ -214,8 +214,8 @@ Example responses:
     "thought": "Found heavy rain and soccer game causing traffic - these are significant issues",
     "action": "FINISH",
     "issues": [
-        {{"message": "Heavy rain expected", "severity": "warning", "details": "80% chance of rain during event time", "source": "weather"}},
-        {{"message": "Soccer game at nearby stadium causing traffic delays", "severity": "critical", "details": "Major game at 15:00 near event location", "source": "local_events"}}
+        {{"message": "You may arrive soaked and uncomfortable in the rain", "severity": "warning", "details": "80% chance of rain during your arrival - bring an umbrella or you'll show up drenched to your meeting", "source": "weather"}},
+        {{"message": "Soccer game may trap you in stadium traffic", "severity": "critical", "details": "Major game at 15:00 can possibly block routes to your 16:00 event - expect 30+ minute delays that could make you late", "source": "local_events"}}
     ]
 }}
 

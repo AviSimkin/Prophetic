@@ -1,5 +1,11 @@
 # Deployment Guide
 
+## Prerequisites
+
+- **Python 3.11** (required)
+- Git
+- API keys (all have free tiers - see README.md)
+
 ## Recommended: Streamlit Community Cloud (FREE)
 
 Streamlit apps are best deployed on **Streamlit Community Cloud** which is free and built specifically for Streamlit applications.
@@ -13,14 +19,17 @@ Streamlit apps are best deployed on **Streamlit Community Cloud** which is free 
 3. **Connect your GitHub repo**: 
    - Sign in with GitHub
    - Select `AviSimkin/Prophetic`
-   - Select branch: `vercel-deployment` (or `main`/`agentic_flow_refactor`)
+   - Select branch: `main`
    - Main file: `app.py`
+   - Python version: `3.11`
 
-4. **Set environment variables**:
+4. **Set environment variables** (all required):
    ```
    GOOGLE_API_KEY=your_gemini_api_key
-   TAVILY_API_KEY=your_tavily_key (optional)
-   SERPAPI_KEY=your_serpapi_key (optional)
+   TAVILY_API_KEY=your_tavily_key
+   SERPAPI_KEY=your_serpapi_key
+   OPEN_WEATHER=your_weatherapi_key
+   GEMINI_MODEL=gemini-2.5-flash-lite
    ```
 
 5. **Deploy!** - Streamlit Cloud will:
